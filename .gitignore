@@ -1,0 +1,24 @@
+# Secrets — only .env.example is committed.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.deps/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+
+# Frontend (E5)
+frontend/node_modules/
+frontend/dist/
+
+# Local working data / session transcripts — not source, never committed.
+ClaudeSessions/
