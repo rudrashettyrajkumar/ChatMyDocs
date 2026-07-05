@@ -72,6 +72,30 @@ class UpstashRedis:
     async def delete(self, key: str) -> int:
         return await self._command("DEL", key)
 
+    async def sadd(self, key: str, *values: Any) -> int:
+        return await self._command("SADD", key, *values)
+
+    async def srem(self, key: str, *values: Any) -> int:
+        return await self._command("SREM", key, *values)
+
+    async def smembers(self, key: str) -> list[str]:
+        result = await self._command("SMEMBERS", key)
+        return result or []
+
+    async def hset(self, key: str, mapping: dict[str, Any]) -> int:
+        fields: list[Any] = []
+        for field, value in mapping.items():
+            fields.extend((field, value))
+        return await self._command("HSET", key, *fields)
+
+    async def hgetall(self, key: str) -> dict[str, str]:
+        """Upstash returns a flat `[field, value, field, value, ...]` array;
+        pair it up into a dict (`{}` for a missing/expired key)."""
+        flat = await self._command("HGETALL", key)
+        if not flat:
+            return {}
+        return dict(zip(flat[0::2], flat[1::2], strict=True))
+
     async def pipeline(self, *commands: Sequence[Any]) -> list[Any]:
         """Send several commands in ONE HTTP round-trip via Upstash's `/pipeline`
         endpoint. Each command is a sequence like `("LPUSH", key, v1, v2)`; the

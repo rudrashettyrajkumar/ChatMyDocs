@@ -17,7 +17,7 @@ select = ["E", "F", "I", "B", "C4", "UP"]
 # FastAPI's dependency-injection idiom *is* a call in an argument default
 # (`= Depends(...)`); these are evaluated once at import, not per-call, so B008
 # is a false positive for them. Whitelist the framework callables we use there.
-extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.File"]
 
 [tool.pytest.ini_options]
 # asyncio_mode=auto lets `async def test_*` run without per-test decorators.

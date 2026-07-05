@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import health
+from backend.api import documents, health
+from backend.scripts.create_collection import ensure_collection
 from backend.utils import redis_client
 from backend.utils.config import get_settings
 
@@ -23,6 +24,13 @@ async def _lifespan(_app: FastAPI):
         await redis_client.warm_up()
     except Exception as exc:  # noqa: BLE001 — warm-up is an optimization, not a gate
         _log.warning("redis warm-up failed; will warm on first use", extra={"reason": repr(exc)})
+    # Idempotent collection/index setup (spec E2 Req 5: "called on startup
+    # too"). Best-effort for the same reason — a half-configured dev box must
+    # still boot.
+    try:
+        await ensure_collection()
+    except Exception as exc:  # noqa: BLE001 — collection setup is not a boot gate
+        _log.warning("qdrant collection setup failed", extra={"reason": repr(exc)})
     yield
 
 
@@ -41,6 +49,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(documents.router)
 
     return app
 
