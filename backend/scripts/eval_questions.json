@@ -1,0 +1,92 @@
+[
+  {
+    "id": 1,
+    "question": "Who wrote this story, according to the document?",
+    "type": "factual",
+    "expected_pages": [1]
+  },
+  {
+    "id": 2,
+    "question": "What is the name of the narrator's husband?",
+    "type": "factual",
+    "expected_pages": [1]
+  },
+  {
+    "id": 3,
+    "question": "What color is the wallpaper in the narrator's room?",
+    "type": "factual",
+    "expected_pages": [3]
+  },
+  {
+    "id": 4,
+    "question": "What is the name of John's sister who helps take care of the narrator?",
+    "type": "factual",
+    "expected_pages": [5]
+  },
+  {
+    "id": 5,
+    "question": "What specialist does John threaten to send the narrator to if she doesn't improve?",
+    "type": "factual",
+    "expected_pages": [6]
+  },
+  {
+    "id": 6,
+    "question": "What kind of place do the narrator and her husband rent for the summer?",
+    "type": "factual",
+    "expected_pages": [1]
+  },
+  {
+    "id": 7,
+    "question": "What smell does the narrator notice coming from the wallpaper?",
+    "type": "factual",
+    "expected_pages": [11]
+  },
+  {
+    "id": 8,
+    "question": "What does the narrator do to the wallpaper on the last night before they are due to leave?",
+    "type": "factual",
+    "expected_pages": [13]
+  },
+  {
+    "id": 9,
+    "question": "What does the narrator do with a rope near the end of the story?",
+    "type": "factual",
+    "expected_pages": [14]
+  },
+  {
+    "id": 10,
+    "question": "What happens right after John breaks open the door at the end of the story?",
+    "type": "factual",
+    "expected_pages": [15]
+  },
+  {
+    "id": 11,
+    "question": "How does the narrator's belief about the woman in the wallpaper change over the course of the story?",
+    "type": "synthesis",
+    "expected_pages": [8, 9, 15]
+  },
+  {
+    "id": 12,
+    "question": "What reasons does John give for refusing to let the narrator leave the house or change rooms?",
+    "type": "synthesis",
+    "expected_pages": [2, 4, 9]
+  },
+  {
+    "id": 13,
+    "question": "What treatment does John prescribe for the narrator's nervous condition?",
+    "type": "synthesis",
+    "expected_pages": [1, 2, 10]
+  },
+  {
+    "id": 14,
+    "question": "What symptoms does the narrator describe experiencing because of her nervous condition?",
+    "type": "synthesis",
+    "expected_pages": [1, 6, 10]
+  },
+  {
+    "id": 15,
+    "question": "According to the document, who won the 2022 FIFA World Cup?",
+    "type": "unanswerable",
+    "expected_pages": []
+  }
+]
