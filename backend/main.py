@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import documents, health
+from backend.api import chat, documents, health
 from backend.scripts.create_collection import ensure_collection
 from backend.utils import redis_client
 from backend.utils.config import get_settings
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(documents.router)
+    app.include_router(chat.router)
 
     return app
 
