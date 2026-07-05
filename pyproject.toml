@@ -1,0 +1,26 @@
+[project]
+name = "docchat-backend"
+version = "0.1.0"
+description = "DocChat — chat with your documents, backend"
+requires-python = ">=3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".deps"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, isort, bugbear, comprehensions, pyupgrade.
+select = ["E", "F", "I", "B", "C4", "UP"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom *is* a call in an argument default
+# (`= Depends(...)`); these are evaluated once at import, not per-call, so B008
+# is a false positive for them. Whitelist the framework callables we use there.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]
+
+[tool.pytest.ini_options]
+# asyncio_mode=auto lets `async def test_*` run without per-test decorators.
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["backend/tests"]
