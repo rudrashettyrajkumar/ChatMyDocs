@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.tests.conftest import bearer
 from backend.utils.redis_client import dc_key
 
 
@@ -126,7 +127,7 @@ def _sid() -> str:
 def _upload(client, data: bytes, *, session_id: str | None = None, filename: str = "doc.pdf"):
     return client.post(
         "/documents",
-        headers={"X-Session-Id": session_id or _sid()},
+        headers=bearer(session_id),
         files={"file": (filename, data, "application/pdf")},
     )
 
@@ -197,18 +198,18 @@ def test_upload_streams_progress_and_lands_in_list_then_delete(client, fake_redi
     assert ready["filename"] == "report.pdf"  # path components stripped (spec Req 8)
     doc_id = ready["doc_id"]
 
-    listed = client.get("/documents", headers={"X-Session-Id": sid}).json()
+    listed = client.get("/documents", headers=bearer(sid)).json()
     assert len(listed) == 1
     assert listed[0]["doc_id"] == doc_id
     assert listed[0]["pages"] == 2
     assert listed[0]["filename"] == "report.pdf"
 
-    delete_resp = client.delete(f"/documents/{doc_id}", headers={"X-Session-Id": sid})
+    delete_resp = client.delete(f"/documents/{doc_id}", headers=bearer(sid))
     assert delete_resp.status_code == 200
     assert delete_resp.json() == {"deleted": True}
     fake_qdrant.delete.assert_awaited_once()
 
-    assert client.get("/documents", headers={"X-Session-Id": sid}).json() == []
+    assert client.get("/documents", headers=bearer(sid)).json() == []
 
 
 def test_sample_pdf_ingests_with_correct_page_payloads(client, fake_redis, fake_qdrant):
@@ -249,12 +250,12 @@ def test_delete_ownership_check_cross_session(client, fake_redis, fake_qdrant):
     }
     fake_redis.sets[dc_key("session", owner_sid, "docs")] = {doc_id}
 
-    resp = client.delete(f"/documents/{doc_id}", headers={"X-Session-Id": other_sid})
+    resp = client.delete(f"/documents/{doc_id}", headers=bearer(other_sid))
     assert resp.status_code == 404
     fake_qdrant.delete.assert_not_awaited()
 
     # The rightful owner can still delete it.
-    resp = client.delete(f"/documents/{doc_id}", headers={"X-Session-Id": owner_sid})
+    resp = client.delete(f"/documents/{doc_id}", headers=bearer(owner_sid))
     assert resp.status_code == 200
 
 
@@ -263,7 +264,7 @@ def test_list_degrades_to_empty_on_redis_outage(client, monkeypatch):
     broken_redis.smembers = AsyncMock(side_effect=ConnectionError("redis unreachable"))
     monkeypatch.setattr("backend.api.documents.get_redis", lambda: broken_redis)
 
-    resp = client.get("/documents", headers={"X-Session-Id": _sid()})
+    resp = client.get("/documents", headers=bearer())
     assert resp.status_code == 200
     assert resp.json() == []
 
@@ -273,5 +274,5 @@ def test_delete_returns_503_not_500_on_redis_outage(client, monkeypatch):
     broken_redis.hgetall = AsyncMock(side_effect=ConnectionError("redis unreachable"))
     monkeypatch.setattr("backend.api.documents.get_redis", lambda: broken_redis)
 
-    resp = client.delete(f"/documents/{uuid.uuid4()}", headers={"X-Session-Id": _sid()})
+    resp = client.delete(f"/documents/{uuid.uuid4()}", headers=bearer())
     assert resp.status_code == 503

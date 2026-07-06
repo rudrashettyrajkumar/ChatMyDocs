@@ -5,8 +5,9 @@ response contract — content-type + no-cache headers (spec E4 required tests).
 from __future__ import annotations
 
 import json
-import uuid
 from unittest.mock import AsyncMock, patch
+
+from backend.tests.conftest import bearer
 
 
 def _parse_sse(text: str) -> list[dict]:
@@ -14,17 +15,11 @@ def _parse_sse(text: str) -> list[dict]:
     return [json.loads(line[len("data: ") :]) for line in lines]
 
 
-def _sid() -> str:
-    return str(uuid.uuid4())
-
-
 def test_question_limit_returns_429(client):
     redis = AsyncMock()
     redis.get = AsyncMock(return_value="25")  # already at MAX_QUESTIONS_PER_DAY (default 25)
     with patch("backend.middleware.rate_limit.get_redis", return_value=redis):
-        resp = client.post(
-            "/chat/stream", json={"question": "hi"}, headers={"X-Session-Id": _sid()}
-        )
+        resp = client.post("/chat/stream", json={"question": "hi"}, headers=bearer())
     assert resp.status_code == 429
     assert resp.json()["error"] == "rate_limited"
 
@@ -39,9 +34,7 @@ def test_chat_stream_is_sse_with_no_cache_headers_and_valid_frames(client):
         patch("backend.api.chat.get_redis", return_value=redis),
         patch("backend.services.history.get_redis", return_value=redis),
     ):
-        resp = client.post(
-            "/chat/stream", json={"question": "hi"}, headers={"X-Session-Id": _sid()}
-        )
+        resp = client.post("/chat/stream", json={"question": "hi"}, headers=bearer())
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/event-stream")
     assert resp.headers["cache-control"] == "no-cache"
@@ -51,6 +44,6 @@ def test_chat_stream_is_sse_with_no_cache_headers_and_valid_frames(client):
     assert events[-2] == {"sources": []}
 
 
-def test_missing_session_id_is_400(client):
+def test_missing_auth_is_401(client):
     resp = client.post("/chat/stream", json={"question": "hi"})
-    assert resp.status_code == 400
+    assert resp.status_code == 401

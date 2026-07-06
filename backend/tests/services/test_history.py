@@ -48,12 +48,13 @@ async def test_load_turns_degrades_to_empty_on_redis_outage():
     assert turns == []
 
 
-async def test_append_turn_pushes_trims_and_sets_ttl():
+async def test_append_turn_pushes_and_trims_without_ttl():
     redis = _redis_with()
     with patch("backend.services.history.get_redis", return_value=redis):
         await history.append_turn("sess-1", "user", "hello")
     redis.pipeline.assert_awaited_once()
-    (lpush_cmd, ltrim_cmd, expire_cmd) = redis.pipeline.await_args.args
+    # No EXPIRE: history persists with the account, bounded only by the window.
+    (lpush_cmd, ltrim_cmd) = redis.pipeline.await_args.args
     assert lpush_cmd[0] == "LPUSH"
     assert lpush_cmd[1] == "dc:history:sess-1"
     payload = json.loads(lpush_cmd[2])
@@ -61,9 +62,6 @@ async def test_append_turn_pushes_trims_and_sets_ttl():
     assert payload["content"] == "hello"
     assert "ts" in payload
     assert ltrim_cmd == ("LTRIM", "dc:history:sess-1", 0, 11)
-    assert expire_cmd[0] == "EXPIRE"
-    assert expire_cmd[1] == "dc:history:sess-1"
-    assert expire_cmd[2] == 24 * 3600
 
 
 async def test_append_turn_degrades_silently_on_redis_outage():

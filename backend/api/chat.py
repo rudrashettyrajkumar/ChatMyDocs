@@ -15,7 +15,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from backend.api.deps import get_session_id
+from backend.api.deps import get_tenant_id
 from backend.middleware.rate_limit import QuestionLimitExceeded, check_question_limit
 from backend.pipeline.chat_pipeline import run_chat_pipeline
 from backend.services.history import load_turns
@@ -54,7 +54,7 @@ async def _document_filenames(session_id: str) -> list[str]:
 async def chat_stream(
     body: ChatRequest,
     background_tasks: BackgroundTasks,
-    session_id: str = Depends(get_session_id),
+    session_id: str = Depends(get_tenant_id),
 ) -> StreamingResponse | JSONResponse:
     try:
         await check_question_limit(session_id)

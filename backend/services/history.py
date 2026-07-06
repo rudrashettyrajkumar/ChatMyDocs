@@ -2,7 +2,8 @@
 spec E4 Req 4).
 
 Key `dc:history:{session_id}` is a Redis list, newest turn at the head (LPUSH),
-trimmed to `_WINDOW` entries, TTL refreshed on every append. Turns are stored
+trimmed to `_WINDOW` entries (no TTL — history persists with the account, bounded
+by entry count rather than a clock). Turns are stored
 OLDEST-FIRST once loaded (`load_turns` reverses the list) since every downstream
 consumer (rewrite_agent, prompt_assembly) already expects that order and slices
 its own shorter window off the end.
@@ -19,7 +20,6 @@ import logging
 import time
 from typing import Any
 
-from backend.utils.config import get_settings
 from backend.utils.redis_client import dc_key, get_redis
 
 _log = logging.getLogger("docchat.history")
@@ -54,19 +54,20 @@ async def load_turns(session_id: str) -> list[dict[str, Any]]:
 
 
 async def append_turn(session_id: str, role: str, content: str) -> None:
-    """LPUSH one `{role, content, ts}` turn, LTRIM to the window, refresh TTL.
+    """LPUSH one `{role, content, ts}` turn, LTRIM to the window.
+
+    No TTL: history belongs to a persistent account, so the rolling window is
+    bounded by `_WINDOW` entries, not by a 24h clock.
 
     Best-effort: a failed append degrades the session's NEXT turn to less
     history; it never breaks the turn currently in flight.
     """
-    settings = get_settings()
     key = _key(session_id)
     payload = json.dumps({"role": role, "content": content, "ts": time.time()})
     try:
         await get_redis().pipeline(
             ("LPUSH", key, payload),
             ("LTRIM", key, 0, _WINDOW - 1),
-            ("EXPIRE", key, settings.SESSION_TTL_HOURS * 3600),
         )
     except Exception as exc:  # noqa: BLE001 — a Redis outage must not break chat
         _log.warning("history append failed", extra={"error": str(exc)})

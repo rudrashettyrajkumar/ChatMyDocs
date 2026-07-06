@@ -1,55 +1,60 @@
-"""Session dependency: valid UUID passes, missing/garbage → 400
-(spec E1 Required tests)."""
+"""Tenant dependency: a valid bearer JWT resolves to its `sub`; a
+missing/garbage/expired token is a clean 401 (never a 500)."""
 
-import uuid
+from datetime import UTC, datetime, timedelta
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from backend.api.deps import get_session_id
+from backend.middleware.jwt_auth import get_current_user_id, issue_jwt
 
 
 def _app_with_dep() -> FastAPI:
-    from fastapi import Depends
-
     app = FastAPI()
 
     @app.get("/probe")
-    async def probe(session_id: str = Depends(get_session_id)):
-        return {"session_id": session_id}
+    async def probe(tenant_id: str = Depends(get_current_user_id)):
+        return {"tenant_id": tenant_id}
 
     return app
 
 
-def test_valid_uuid_v4_passes():
+def _bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def test_valid_token_resolves_to_sub():
     client = TestClient(_app_with_dep())
-    sid = str(uuid.uuid4())
-    resp = client.get("/probe", headers={"X-Session-Id": sid})
+    token = issue_jwt(user_id="user-123", email="a@b.com")
+    resp = client.get("/probe", headers=_bearer(token))
     assert resp.status_code == 200
-    assert resp.json()["session_id"] == sid
+    assert resp.json()["tenant_id"] == "user-123"
 
 
-def test_missing_header_is_400():
+def test_missing_header_is_401():
     client = TestClient(_app_with_dep())
-    resp = client.get("/probe")
-    assert resp.status_code == 400
+    assert client.get("/probe").status_code == 401
 
 
-def test_malformed_uuid_is_400():
+def test_malformed_token_is_401():
     client = TestClient(_app_with_dep())
-    resp = client.get("/probe", headers={"X-Session-Id": "not-a-uuid"})
-    assert resp.status_code == 400
+    assert client.get("/probe", headers=_bearer("not-a-jwt")).status_code == 401
 
 
-def test_non_v4_uuid_is_400():
+def test_expired_token_is_401():
     client = TestClient(_app_with_dep())
-    # UUID v1 (time-based), not v4.
-    v1 = str(uuid.uuid1())
-    resp = client.get("/probe", headers={"X-Session-Id": v1})
-    assert resp.status_code == 400
+    past = datetime.now(UTC) - timedelta(days=30)
+    expired = issue_jwt(user_id="u", email="a@b.com", now=past)
+    assert client.get("/probe", headers=_bearer(expired)).status_code == 401
 
 
-def test_empty_header_is_400():
+def test_wrong_signature_is_401(monkeypatch):
     client = TestClient(_app_with_dep())
-    resp = client.get("/probe", headers={"X-Session-Id": ""})
-    assert resp.status_code == 400
+    token = issue_jwt(user_id="u", email="a@b.com")
+    # Re-sign the app's verifier with a different secret ⇒ signature no longer checks out.
+    from backend.utils.config import get_settings
+
+    get_settings.cache_clear()
+    monkeypatch.setenv("JWT_SECRET", "a-completely-different-secret")
+    get_settings.cache_clear()
+    assert client.get("/probe", headers=_bearer(token)).status_code == 401

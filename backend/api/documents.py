@@ -24,7 +24,7 @@ from pathlib import PureWindowsPath
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from backend.api.deps import get_session_id
+from backend.api.deps import get_tenant_id
 from backend.ingestion.errors import IngestValidationError
 from backend.ingestion.ingest_service import run_ingestion
 from backend.ingestion.parser import is_pdf, parse_pdf
@@ -76,9 +76,11 @@ async def _persist_metadata(
 ) -> None:
     """Best-effort: the vectors are already safely in Qdrant by the time this
     runs, so a Redis hiccup here degrades `GET /documents`'s listing, not the
-    document itself (errors degrade, never break)."""
-    settings = get_settings()
-    ttl = settings.SESSION_TTL_HOURS * 3600
+    document itself (errors degrade, never break).
+
+    No TTL: documents belong to a persistent account now, not a 24h anonymous
+    session, so they live until the user deletes them (or the account is gone).
+    """
     doc_key = dc_key("doc", doc_id)
     session_docs_key = dc_key("session", session_id, "docs")
     try:
@@ -97,9 +99,7 @@ async def _persist_metadata(
                 "created_at",
                 time.time(),
             ),
-            ("EXPIRE", doc_key, ttl),
             ("SADD", session_docs_key, doc_id),
-            ("EXPIRE", session_docs_key, ttl),
         )
     except Exception as exc:  # noqa: BLE001 — metadata write must never break ingestion
         _log.warning(
@@ -130,7 +130,7 @@ async def _stream_ingestion(
 async def upload_document(
     request: Request,
     file: UploadFile = File(...),
-    session_id: str = Depends(get_session_id),
+    session_id: str = Depends(get_tenant_id),
 ) -> StreamingResponse | JSONResponse:
     data = await file.read()
     client_ip = _client_ip(request)
@@ -155,7 +155,7 @@ async def upload_document(
 
 
 @router.get("/documents")
-async def list_documents(session_id: str = Depends(get_session_id)) -> list[dict]:
+async def list_documents(session_id: str = Depends(get_tenant_id)) -> list[dict]:
     redis = get_redis()
     try:
         doc_ids = await redis.smembers(dc_key("session", session_id, "docs"))
@@ -185,7 +185,7 @@ async def list_documents(session_id: str = Depends(get_session_id)) -> list[dict
 
 
 @router.delete("/documents/{doc_id}")
-async def delete_document(doc_id: str, session_id: str = Depends(get_session_id)) -> dict:
+async def delete_document(doc_id: str, session_id: str = Depends(get_tenant_id)) -> dict:
     from qdrant_client import models
 
     redis = get_redis()

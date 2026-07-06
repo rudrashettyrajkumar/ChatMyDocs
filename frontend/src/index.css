@@ -1,0 +1,129 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Semantic design tokens. Light is the default (colorful, airy); `.dark` on
+   <html> flips them. Colors are stored as raw "R G B" triples so Tailwind's
+   `rgb(var(--x) / <alpha-value>)` opacity modifiers keep working.
+--------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  --bg: 248 249 255;
+  --surface: 255 255 255;
+  --surface-muted: 244 245 252;
+  --border: 226 228 240;
+  --foreground: 15 23 42;
+  --foreground-muted: 100 116 139;
+
+  --brand: 99 102 241; /* indigo-500 */
+  --brand-2: 168 85 247; /* purple-500 */
+  --accent: 37 99 235; /* blue-600 */
+  --success: 16 185 129;
+  --destructive: 244 63 94;
+  --ring: 99 102 241;
+
+  /* Glass surfaces are expressed directly (not via Tailwind) so they can carry
+     theme-specific translucency, blur and shadow in one place. */
+  --glass-bg: rgb(255 255 255 / 0.72);
+  --glass-bg-strong: rgb(255 255 255 / 0.88);
+  --glass-border: rgb(255 255 255 / 0.7);
+  --glass-shadow: 0 10px 34px -12px rgb(30 27 75 / 0.22);
+
+  /* Ambient mesh blob colors (behind everything). */
+  --blob-1: 129 140 248; /* indigo */
+  --blob-2: 217 70 239; /* fuchsia */
+  --blob-3: 34 211 238; /* cyan */
+}
+
+.dark {
+  color-scheme: dark;
+
+  --bg: 8 11 26;
+  --surface: 17 22 43;
+  --surface-muted: 24 30 54;
+  --border: 42 50 82;
+  --foreground: 226 232 240;
+  --foreground-muted: 148 163 184;
+
+  --brand: 129 140 248; /* lighter indigo for dark bg */
+  --brand-2: 192 132 252;
+  --accent: 96 165 250;
+  --success: 52 211 153;
+  --destructive: 251 113 133;
+  --ring: 129 140 248;
+
+  --glass-bg: rgb(255 255 255 / 0.05);
+  --glass-bg-strong: rgb(255 255 255 / 0.08);
+  --glass-border: rgb(255 255 255 / 0.1);
+  --glass-shadow: 0 14px 40px -12px rgb(0 0 0 / 0.6);
+
+  --blob-1: 79 70 229;
+  --blob-2: 168 85 247;
+  --blob-3: 14 165 233;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body {
+  @apply bg-background text-foreground font-sans antialiased m-0 min-h-dvh;
+}
+
+/* Consistent, on-brand focus ring for keyboard users everywhere. */
+*:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--bg)), 0 0 0 4px rgb(var(--ring) / 0.7);
+  border-radius: 0.5rem;
+}
+
+@layer components {
+  /* Frosted glass surface — the signature look. */
+  .glass {
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    backdrop-filter: blur(16px) saturate(150%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+  .glass-strong {
+    background: var(--glass-bg-strong);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+  }
+
+  /* Gradient text for headlines and the wordmark. */
+  .text-gradient {
+    background-image: linear-gradient(120deg, rgb(var(--brand)), rgb(var(--brand-2)), rgb(var(--accent)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+
+/* Slimmer, on-theme scrollbars. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--foreground-muted) / 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(var(--foreground-muted) / 0.35);
+  border-radius: 9999px;
+}

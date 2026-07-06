@@ -2,6 +2,7 @@
 APIs.
 """
 
+import uuid
 from unittest.mock import patch
 
 import pytest
@@ -17,16 +18,45 @@ _TEST_ENV = {
     "QDRANT_API_KEY": "test-qdrant-key",
     "UPSTASH_URL": "http://upstash.test",
     "UPSTASH_TOKEN": "test-upstash-token",
+    "JWT_SECRET": "test-jwt-secret-not-for-prod",
 }
+
+
+def bearer(sub: str | None = None) -> dict[str, str]:
+    """Mint an `Authorization: Bearer` header for a given tenant/account id.
+
+    Data-route tests only need a signed token whose `sub` matches the id their
+    faked Redis/Qdrant state is keyed on — no real user record required, since
+    the data-route auth dependency is decode-only (`get_current_user_id`).
+    """
+    from backend.middleware.jwt_auth import issue_jwt
+
+    sub = sub or str(uuid.uuid4())
+    return {"Authorization": f"Bearer {issue_jwt(user_id=sub, email='t@example.com')}"}
 
 
 @pytest.fixture(autouse=True)
 def _env(monkeypatch):
-    """Populate required env vars and clear the settings cache per test."""
+    """Populate required env vars and clear the settings cache per test.
+
+    Also disables reading the developer's real `.env`: tests must be hermetic,
+    driven solely by `_TEST_ENV`, so the "missing key" config tests can actually
+    observe a key as missing instead of it leaking in from a populated `.env`.
+    """
+    from backend.utils.config import Settings, get_settings
+
+    # Clear any ambient value for a Settings field we don't explicitly pin, so
+    # defaults are honoured. Needed because importing `litellm` runs load_dotenv()
+    # and — under the shared MyShiva deps — pulls MyShiva's .env into os.environ
+    # (e.g. MAX_CONCURRENT_LLM_CALLS=12), which would otherwise leak into config
+    # tests. A test that wants an override still sets it after this autouse runs.
+    for field in Settings.model_fields:
+        if field not in _TEST_ENV:
+            monkeypatch.delenv(field, raising=False)
     for key, value in _TEST_ENV.items():
         monkeypatch.setenv(key, value)
-    from backend.utils.config import get_settings
 
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
