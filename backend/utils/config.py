@@ -13,8 +13,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _log = logging.getLogger("docchat.config")
 
-# Keys that MUST be present before prod traffic. DocChat has no auth/payments —
-# only the LLM gateways and the two data stores are load-bearing.
+# Keys that MUST be present before prod traffic. The LLM gateways, the two data
+# stores, and the JWT signing secret are all load-bearing: a prod box that can
+# neither reach a model, persist a vector, nor sign an auth token is broken.
 REQUIRED_IN_PROD: tuple[str, ...] = (
     "OPENROUTER_API_KEY",
     "GROQ_API_KEY",
@@ -22,6 +23,7 @@ REQUIRED_IN_PROD: tuple[str, ...] = (
     "QDRANT_API_KEY",
     "UPSTASH_URL",
     "UPSTASH_TOKEN",
+    "JWT_SECRET",
 )
 
 
@@ -48,6 +50,12 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str | None = None  # primary gateway (all LLM + embeddings)
     GROQ_API_KEY: str | None = None  # failover provider
 
+    # --- Auth (self-contained email/password → our own HS256 JWT) --------
+    # JWT_SECRET signs every session token; keep it long + random in prod.
+    # Users persist in Upstash (no TTL) so accounts outlive the 24h data window.
+    JWT_SECRET: str | None = None
+    JWT_TTL_DAYS: int = 7
+
     # --- Data stores -------------------------------------------------------
     QDRANT_URL: str | None = None
     QDRANT_API_KEY: str | None = None
@@ -65,6 +73,9 @@ class Settings(BaseSettings):
     RELEVANCE_THRESHOLD: float = 0.30
     CHUNK_TOKENS: int = 450
     CHUNK_OVERLAP: int = 80
+    # The rolling window for the per-day question quota (the "day" in
+    # MAX_QUESTIONS_PER_DAY). Since auth landed, accounts and their documents
+    # persist indefinitely; this no longer governs data expiry.
     SESSION_TTL_HOURS: int = 24
     EMBED_BATCH_SIZE: int = 100
 

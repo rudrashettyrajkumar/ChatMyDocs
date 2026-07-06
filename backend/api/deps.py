@@ -1,37 +1,15 @@
-"""Shared FastAPI dependencies (spec E1 Req 4).
+"""Shared FastAPI dependencies — the one place the tenant boundary is defined.
 
-DocChat has no auth: an anonymous `X-Session-Id` (client-generated UUID v4,
-ARCHITECTURE §7) is the only tenant boundary. Every route that touches
-per-session data depends on `get_session_id` so a missing/malformed header
-fails the request before any handler logic runs.
+DocChat authenticates every data route with a bearer JWT (self-contained
+email/password auth, see `middleware/jwt_auth.py`). The authenticated account id
+is the multi-tenant key: it is what scopes Qdrant searches, the `dc:session:*`
+document sets, chat history, and per-account rate limits. Routes depend on
+`get_tenant_id` so a missing/invalid token fails with a clean 401 before any
+handler logic runs — and so the tenancy source lives in exactly one import.
 """
 
 from __future__ import annotations
 
-import uuid
+from backend.middleware.jwt_auth import get_current_user_id as get_tenant_id
 
-from fastapi import Header, HTTPException, status
-
-_MISSING_DETAIL = "X-Session-Id header is required"
-_MALFORMED_DETAIL = "X-Session-Id must be a valid UUID v4"
-
-
-async def get_session_id(
-    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
-) -> str:
-    """Validate the `X-Session-Id` header and return it normalized (lowercase).
-
-    400 on missing or malformed input — never a 500, never a silently-generated
-    session (that would let a client claim someone else's documents).
-    """
-    if not x_session_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_MISSING_DETAIL)
-    try:
-        parsed = uuid.UUID(x_session_id)
-    except (ValueError, AttributeError, TypeError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=_MALFORMED_DETAIL
-        ) from exc
-    if parsed.version != 4:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_MALFORMED_DETAIL)
-    return str(parsed)
+__all__ = ["get_tenant_id"]

@@ -1,6 +1,24 @@
 # DOCCHAT — SOLUTION DESIGN & TECHNICAL ARCHITECTURE
 **v1.0 · July 4, 2026 · Budget: ₹0 extra/month (rides on existing free tiers + Railway Hobby) · Timeline: 1 week**
 
+> ### ⚠️ v1.1 addendum (auth + account model) — supersedes the "anonymous session" design below
+> DocChat now requires **login**. A self-contained **email/password** system (no external
+> provider, still ₹0) replaces the anonymous localStorage session:
+> - **Users** persist in Upstash (`dc:user:{email}` hash + `dc:userid:{id}` → email), passwords
+>   hashed with stdlib **PBKDF2-HMAC-SHA256** (no bcrypt/passlib dependency). We mint our own
+>   **HS256 JWT** (`JWT_SECRET`, `JWT_TTL_DAYS`, default 7) at register/login.
+> - The **authenticated user id is the tenant key** everywhere the design says "session_id":
+>   the Qdrant `session_id` payload filter, `dc:session:{id}:docs`, `dc:history:{id}`, and the
+>   per-day rate counters all key on it. Cross-tenant isolation is unchanged in spirit.
+> - **Persistence:** documents and chat history no longer carry a 24h TTL — they live with the
+>   account until deleted. Only the per-day quota counters (`dc:qcount`, `dc:iplimit`) expire.
+> - **API:** `POST /auth/register`, `POST /auth/login` → `{access_token, user}`; `GET /auth/me`.
+>   Data routes take `Authorization: Bearer <jwt>` (the old `X-Session-Id` header is gone).
+> - **Frontend:** react-router with `/` (landing), `/login`, `/register`, and a protected
+>   `/app`; a light-first colorful **glassmorphism** UI with a dark-mode toggle
+>   (see `docs/DESIGN-SYSTEM.md`). Everything below that mentions "anonymous / no auth / 24h
+>   wipe" reflects v1.0 and is kept for provenance.
+
 > Portfolio Project #1: "Chat with your documents." Upload PDFs → ask questions → get
 > streamed answers **with page-level citations**. A generalized, open-source-able version
 > of the MyShiva RAG pipeline. Target audience: Upwork/Fiverr clients evaluating whether

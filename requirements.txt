@@ -9,6 +9,7 @@ pydantic-settings==2.7.1
 python-multipart==0.0.20
 pymupdf==1.25.2
 tiktoken==0.8.0
+python-jose[cryptography]==3.3.0  # HS256 JWT minting/verification (auth)
 
 # Dev / CI (lint + test).
 pytest==8.3.4

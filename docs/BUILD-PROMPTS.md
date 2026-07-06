@@ -105,12 +105,15 @@ summary. Done = acceptance criteria + required tests green.
 
 ```
 Implement docs/specs/E5-frontend.md exactly. Read docs/ARCHITECTURE.md §7 and §8 first,
-and read backend/api/chat.py + documents.py + backend/utils/sse.py to bind to the REAL
-SSE event shapes — do not guess the contract.
+docs/DESIGN-SYSTEM.md for exact colors/tokens/component treatment, and read
+backend/api/chat.py + documents.py + backend/utils/sse.py to bind to the REAL SSE event
+shapes — do not guess the contract.
 
 Stack: Vite + React 18 + TypeScript + Tailwind. No component library. react-markdown for
 answers. SSE via fetch streaming (POST bodies rule out EventSource) — parse frames
-manually in api/client.ts.
+manually in api/client.ts. Use the color tokens and per-component guidance in
+docs/DESIGN-SYSTEM.md verbatim (Tailwind config colors, chip/drawer/bubble treatment,
+mobile sidebar→bottom-sheet behavior) — don't improvise a palette.
 
 Build in the spec's task order (shell → upload → chat → citations → resilience → polish)
 and keep it working at every step against the live local backend (npm run dev +
