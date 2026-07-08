@@ -11,7 +11,13 @@ const STARTER_QUESTIONS = [
   'Are there any important dates or numbers?',
 ]
 
-export function Chat({ hasDocuments }: { hasDocuments: boolean }) {
+export function Chat({
+  hasDocuments,
+  onOpenModels,
+}: {
+  hasDocuments: boolean
+  onOpenModels: () => void
+}) {
   const { turns, ask, retry } = useChatStream()
   const [drawer, setDrawer] = useState<{ turnId: number; n: number } | null>(null)
 
@@ -53,7 +59,7 @@ export function Chat({ hasDocuments }: { hasDocuments: boolean }) {
         )}
       </div>
 
-      <Composer onSend={ask} disabled={!hasDocuments} />
+      <Composer onSend={ask} disabled={!hasDocuments} onOpenModels={onOpenModels} />
 
       <SourcesDrawer
         sources={activeTurn?.sources ?? []}

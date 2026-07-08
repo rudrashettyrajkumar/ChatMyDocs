@@ -57,6 +57,45 @@ export class ApiError extends Error {
   }
 }
 
+// --- BYOK model catalog (GET /api/models) ---------------------------------
+
+export type CatalogModel = {
+  id: string
+  name: string
+  accuracy: number // 1-5 editorial tier
+  speed: 'blazing' | 'fast' | 'balanced' | 'deliberate'
+  cost: string
+  context: string
+  free: boolean
+  recommended: boolean
+  notes: string
+}
+
+export type CatalogProvider = {
+  id: string
+  name: string
+  tagline: string
+  kind: 'free' | 'freemium' | 'paid'
+  key_url: string
+  key_steps: string[]
+  models: CatalogModel[]
+  embedding_models: CatalogModel[]
+  allows_custom_model: boolean
+}
+
+export type ModelsCatalog = {
+  providers: CatalogProvider[]
+  embed_providers: string[]
+  demo_available: boolean
+  embedding_pin: string | null
+}
+
+export type ValidateResult = {
+  ok: boolean
+  detail: string
+  latency_ms?: number
+}
+
 export type HealthStatus = {
   status: 'ok' | 'degraded'
   qdrant: 'ok' | 'down'

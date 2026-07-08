@@ -1,13 +1,15 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { Send } from 'lucide-react'
+import { ModelChip } from './ui/ModelChip'
 
 type Props = {
   onSend: (question: string) => void
   disabled: boolean
+  onOpenModels: () => void
 }
 
-export function Composer({ onSend, disabled }: Props) {
+export function Composer({ onSend, disabled, onOpenModels }: Props) {
   const [value, setValue] = useState('')
 
   const submit = (e: FormEvent) => {
@@ -20,6 +22,12 @@ export function Composer({ onSend, disabled }: Props) {
 
   return (
     <form onSubmit={submit} className="border-t border-border p-3">
+      <div className="mb-2 flex items-center justify-between px-1">
+        <ModelChip onClick={onOpenModels} />
+        <span className="hidden text-[11px] text-foreground-muted sm:block">
+          Answers are grounded in your documents with page citations
+        </span>
+      </div>
       <div className="glass-strong flex items-center gap-2 rounded-2xl p-1.5">
         <div className="group relative flex-1">
           <input

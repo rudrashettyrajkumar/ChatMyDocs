@@ -1,5 +1,14 @@
 import { getToken, handleUnauthorized } from '../lib/auth-token'
-import type { ApiErrorBody, ChatEvent, DocSummary, HealthStatus, IngestProgressEvent } from './types'
+import { byokHeaders } from '../lib/llmConfig'
+import type {
+  ApiErrorBody,
+  ChatEvent,
+  DocSummary,
+  HealthStatus,
+  IngestProgressEvent,
+  ModelsCatalog,
+  ValidateResult,
+} from './types'
 import { ApiError } from './types'
 
 const API_URL = import.meta.env.VITE_API_URL as string
@@ -77,9 +86,11 @@ export async function* uploadDocument(
   const form = new FormData()
   form.append('file', file)
 
+  // BYOK embedding headers ride along so ingestion embeds on the user's key
+  // (and the backend can 409 on an embedding-space mismatch up front).
   const res = await fetch(`${API_URL}/documents`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: { ...authHeaders(), ...byokHeaders() },
     body: form,
     signal,
   })
@@ -94,7 +105,7 @@ export async function* uploadDocument(
 export async function* streamChat(question: string, signal?: AbortSignal): AsyncGenerator<ChatEvent> {
   const res = await fetch(`${API_URL}/chat/stream`, {
     method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    headers: { ...authHeaders(), ...byokHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify({ question }),
     signal,
   })
@@ -104,6 +115,28 @@ export async function* streamChat(question: string, signal?: AbortSignal): Async
   for await (const frame of parseSSE(res.body)) {
     yield { type: frame.event, ...(frame.data as object) } as ChatEvent
   }
+}
+
+export async function fetchModelCatalog(): Promise<ModelsCatalog> {
+  const res = await fetch(`${API_URL}/api/models`, { headers: authHeaders() })
+  await throwIfError(res)
+  return res.json()
+}
+
+/** One live round-trip with the submitted key (never stored server-side). */
+export async function validateProviderKey(body: {
+  provider: string
+  model: string
+  api_key: string
+  kind: 'chat' | 'embedding'
+}): Promise<ValidateResult> {
+  const res = await fetch(`${API_URL}/api/models/validate`, {
+    method: 'POST',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  await throwIfError(res)
+  return res.json()
 }
 
 export async function fetchSamplePdf(): Promise<File> {

@@ -5,6 +5,8 @@ import { Chat } from '../components/Chat'
 import { ErrorBanner } from '../components/ErrorBanner'
 import { MobileSidebarSheet } from '../components/MobileSidebarSheet'
 import { Logo } from '../components/ui/Logo'
+import { ModelChip } from '../components/ui/ModelChip'
+import { ModelStudio } from '../components/ModelStudio'
 import { ThemeToggle } from '../components/ui/ThemeToggle'
 import { UserMenu } from '../components/ui/UserMenu'
 import { useDocuments } from '../hooks/useDocuments'
@@ -25,6 +27,7 @@ export function Workspace() {
   const { uploads, startUpload, dismiss } = useUpload(addDoc)
   const [sampleLoading, setSampleLoading] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [modelStudioOpen, setModelStudioOpen] = useState(false)
 
   const handleTrySample = async () => {
     setSampleLoading(true)
@@ -55,6 +58,7 @@ export function Workspace() {
         <div className="glass flex items-center justify-between rounded-2xl px-4 py-2.5">
           <Logo />
           <div className="flex items-center gap-2 sm:gap-3">
+            <ModelChip onClick={() => setModelStudioOpen(true)} />
             <span
               className="hidden items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-foreground-muted sm:flex"
               title={`Backend: ${healthState}`}
@@ -103,7 +107,7 @@ export function Workspace() {
           </div>
 
           <div className="flex-1 overflow-hidden">
-            <Chat hasDocuments={docs.length > 0} />
+            <Chat hasDocuments={docs.length > 0} onOpenModels={() => setModelStudioOpen(true)} />
           </div>
         </div>
       </div>
@@ -111,6 +115,8 @@ export function Workspace() {
       <MobileSidebarSheet open={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)}>
         <Sidebar {...sidebarProps} />
       </MobileSidebarSheet>
+
+      <ModelStudio open={modelStudioOpen} onClose={() => setModelStudioOpen(false)} />
     </div>
   )
 }
