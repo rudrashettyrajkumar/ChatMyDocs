@@ -20,5 +20,8 @@ venv/
 frontend/node_modules/
 frontend/dist/
 
+# Cloudflare wrangler local cache (E6)
+.wrangler/
+
 # Local working data / session transcripts — not source, never committed.
 ClaudeSessions/
