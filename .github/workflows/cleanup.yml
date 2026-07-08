@@ -1,0 +1,49 @@
+name: Cleanup orphaned Qdrant chunks
+
+# Daily orphan sweep (spec E6 Req 3, ARCHITECTURE §9): deletes ingestions that
+# never got a matching Redis doc record (see backend/scripts/cleanup_expired.py
+# for why this is "orphans", not a blanket 24h TTL — real user documents have
+# none since the auth pivot). The Qdrant API hit this makes doubles as the
+# free-tier cluster's keepalive; Redis needs nothing, its TTLs are native.
+on:
+  schedule:
+    - cron: "17 3 * * *" # once a day, off the hour to avoid GH Actions' peak load
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Log what would be deleted without deleting anything"
+        type: boolean
+        default: false
+      grace_seconds:
+        description: "Min age (seconds) before an ingestion is considered orphaned"
+        type: string
+        default: "3600"
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install qdrant-client==1.12.2 httpx==0.27.2 pydantic-settings==2.7.1
+
+      - name: Run cleanup
+        env:
+          ENV: dev # only Qdrant/Redis creds are needed for this script; keeps
+          # the LLM/JWT secrets (REQUIRED_IN_PROD) out of this workflow entirely
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          QDRANT_COLLECTION: docchat_chunks
+          UPSTASH_URL: ${{ secrets.UPSTASH_URL }}
+          UPSTASH_TOKEN: ${{ secrets.UPSTASH_TOKEN }}
+        run: |
+          ARGS="--grace-seconds ${{ github.event.inputs.grace_seconds || '3600' }}"
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python -m backend.scripts.cleanup_expired $ARGS
