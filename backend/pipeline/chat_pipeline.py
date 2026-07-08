@@ -1,26 +1,23 @@
-"""Chat pipeline — the async orchestrator for `POST /chat/stream`
-(ARCHITECTURE §3.2, spec E4 Req 1).
+"""Chat pipeline — the SSE face of the LangGraph workflow (`POST /chat/stream`).
 
-**Pipeline order is LAW**: guardrail → no-docs check → rewrite →
-(route=direct skips retrieval) → retrieve → streamed cited answer →
-BackgroundTasks post-process. One linear async generator, no framework — same
-"boring beats clever" philosophy as every other DocChat agent.
+v3 split of responsibilities: `graph/chat_graph.py` owns the pre-answer
+workflow (guardrail → no-docs → rewrite → retrieve → rerank) as a StateGraph;
+THIS module owns everything HTTP-shaped — SSE framing, heartbeats, the
+streamed answer, history/quota post-processing, and turning failures into the
+one terminal `error` event. The event contract (token/sources/done/error) is
+FROZEN from E4; the graph rebuild must be invisible to the frontend.
 
-Every yielded item is an already-formatted SSE frame (`backend/utils/sse.py`
-helpers), so `api/chat.py` only wraps this generator in a `StreamingResponse`;
-nothing downstream re-parses or re-formats an event.
+Ambiguity calls carried over from E4 (unchanged):
+- The no-docs canned reply IS stored in history; only guardrail-blocked
+  messages are excluded.
+- The daily question counter increments for EVERY question that reaches this
+  pipeline, including the guardrail and no-docs exits.
+- A mid-stream answer failure stores NOTHING (neither question nor partial
+  answer).
 
-Ambiguity calls (spec doesn't say, smallest reasonable choice):
-- The no-docs canned reply IS stored in history like any normal turn — only
-  guardrail-blocked messages are excluded (spec Req 4 only calls out the
-  guardrail path as excluded).
-- The daily question counter (`increment_question_count`) is incremented for
-  EVERY question that reaches this pipeline, including the guardrail and
-  no-docs exits — "questions/session/day" is a count of questions asked, not
-  just ones that reached an LLM.
-- A mid-stream answer failure stores NOTHING (neither the question nor the
-  partial answer) — a broken turn is worse to replay into a future prompt than
-  one the user can simply re-ask.
+BYOK addition: when the failing model is the USER'S (cfg.chat set), the error
+event carries the gateway's `user_detail` — provider + model + reason — so the
+user can fix their key instead of staring at a generic apology.
 """
 
 from __future__ import annotations
@@ -31,12 +28,11 @@ from collections.abc import AsyncIterator
 from fastapi import BackgroundTasks
 
 from backend.agents.answer_agent import cited_sources, stream_answer
-from backend.agents.retrieval_agent import RetrievedChunk, retrieve
-from backend.agents.rewrite_agent import rewrite
+from backend.graph.chat_graph import ChatState, prepare
+from backend.llm.gateway import LLMUnavailable
+from backend.llm.runconfig import DEFAULT, RunConfig
 from backend.middleware.rate_limit import increment_question_count
 from backend.services import history
-from backend.utils.guardrails import check_input, deflection
-from backend.utils.prompt_assembly import no_docs_message
 from backend.utils.sse import PING, format_event, format_token, with_heartbeat
 
 _log = logging.getLogger("docchat.chat_pipeline")
@@ -52,7 +48,7 @@ def _schedule_post_process(
     answer_text: str | None,
     store: bool,
 ) -> None:
-    """STEP 6 — never awaited inline; always runs after the stream is sent."""
+    """Final step — never awaited inline; always runs after the stream is sent."""
     background_tasks.add_task(increment_question_count, session_id)
     if store:
         background_tasks.add_task(history.append_turn, session_id, "user", question)
@@ -77,6 +73,13 @@ async def _emit_canned(
     )
 
 
+def _stream_error_detail(exc: Exception) -> str:
+    """User-facing detail for a failed answer stream (BYOK gets specifics)."""
+    if isinstance(exc, LLMUnavailable):
+        return exc.user_detail
+    return _FRIENDLY_STREAM_ERROR
+
+
 async def run_chat_pipeline(
     *,
     question: str,
@@ -84,48 +87,39 @@ async def run_chat_pipeline(
     history_turns: list[dict[str, str]],
     filenames: list[str],
     background_tasks: BackgroundTasks,
+    cfg: RunConfig = DEFAULT,
 ) -> AsyncIterator[str]:
     """The full chat turn, already SSE-formatted (spec E4 Req 1)."""
-    # STEP 0 — input guardrail. Zero LLM calls; message is NEVER stored (Req 4).
-    if check_input(question) is not None:
+    # Pre-answer workflow: guardrail → no-docs → rewrite → retrieve → rerank.
+    state: ChatState = {
+        "question": question,
+        "session_id": session_id,
+        "history": history_turns,
+        "filenames": filenames,
+        "cfg": cfg,
+    }
+    final = await prepare(state)
+
+    # A canned exit (guardrail block or no docs) skips the answerer entirely.
+    if final.get("canned"):
         async for frame in _emit_canned(
-            deflection(),
+            final["canned"],
             background_tasks=background_tasks,
             session_id=session_id,
             question=question,
-            store=False,
+            store=bool(final.get("store")),
         ):
             yield frame
         return
 
-    # STEP 1 — context load / no-docs check. No LLM call.
-    if not filenames:
-        async for frame in _emit_canned(
-            no_docs_message(),
-            background_tasks=background_tasks,
-            session_id=session_id,
-            question=question,
-            store=True,
-        ):
-            yield frame
-        return
+    chunks = final.get("chunks", [])
+    low_relevance = bool(final.get("low_relevance"))
 
-    # STEP 2 — query rewrite (never raises; degrades to route=full internally).
-    rewrite_result = await rewrite(question, history_turns, filenames)
-
-    # STEP 3/4 — retrieval, skipped entirely for route=direct.
-    chunks: list[RetrievedChunk]
-    if rewrite_result.route == "direct":
-        chunks, low_relevance = [], False
-    else:
-        result = await retrieve(rewrite_result.queries, session_id)
-        chunks, low_relevance = result.chunks, result.low_relevance
-
-    # STEP 5 — streamed, cited answer.
+    # Streamed, cited answer (the one stage that talks to the user's model live).
     seq = 0
     answer_parts: list[str] = []
     try:
-        token_stream = stream_answer(chunks, history_turns, question, low_relevance)
+        token_stream = stream_answer(chunks, history_turns, question, low_relevance, cfg)
         async for token in with_heartbeat(token_stream):
             if token == PING:
                 yield token  # heartbeat comment — no seq, passes straight through
@@ -135,7 +129,7 @@ async def run_chat_pipeline(
             seq += 1
     except Exception as exc:  # noqa: BLE001 — mid-stream failure degrades to one error event
         _log.warning("answer stream failed", extra={"error": repr(exc)})
-        yield format_event("error", {"detail": _FRIENDLY_STREAM_ERROR})
+        yield format_event("error", {"detail": _stream_error_detail(exc)})
         _schedule_post_process(
             background_tasks,
             session_id=session_id,
@@ -149,7 +143,7 @@ async def run_chat_pipeline(
     yield format_event("sources", {"sources": cited_sources(chunks, answer_text)})
     yield format_event("done", {})
 
-    # STEP 6 — background post-process: never blocks the stream.
+    # Background post-process: never blocks the stream.
     _schedule_post_process(
         background_tasks,
         session_id=session_id,

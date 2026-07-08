@@ -28,7 +28,10 @@ from backend.api.deps import get_tenant_id
 from backend.ingestion.errors import IngestValidationError
 from backend.ingestion.ingest_service import run_ingestion
 from backend.ingestion.parser import is_pdf, parse_pdf
+from backend.llm.runconfig import BYOKError, Selection, from_headers
 from backend.middleware.rate_limit import check_and_increment_ip_upload, check_session_doc_limit
+from backend.services import embed_signature
+from backend.utils import embeddings
 from backend.utils.config import get_settings
 from backend.utils.qdrant_client import get_qdrant
 from backend.utils.redis_client import dc_key, get_redis
@@ -108,15 +111,29 @@ async def _persist_metadata(
 
 
 async def _stream_ingestion(
-    pages: list[tuple[int, str]], *, doc_id: str, filename: str, session_id: str
+    pages: list[tuple[int, str]],
+    *,
+    doc_id: str,
+    filename: str,
+    session_id: str,
+    embed_selection: Selection,
 ) -> AsyncIterator[str]:
     ready: dict | None = None
-    ingestion = run_ingestion(pages, doc_id=doc_id, filename=filename, session_id=session_id)
+    ingestion = run_ingestion(
+        pages,
+        doc_id=doc_id,
+        filename=filename,
+        session_id=session_id,
+        embed_selection=embed_selection,
+    )
     async for event in ingestion:
         yield format_event("progress", event)
         if event.get("stage") == "ready":
             ready = event
     if ready is not None:
+        # Pin the tenant's embedding space on first successful ingest so every
+        # later upload and every query vector lives in the same space.
+        await embed_signature.pin(session_id, embed_selection)
         await _persist_metadata(
             doc_id=doc_id,
             session_id=session_id,
@@ -135,6 +152,29 @@ async def upload_document(
     data = await file.read()
     client_ip = _client_ip(request)
 
+    # BYOK embed headers + embedding-space pin are part of the pre-flight
+    # (validation-before-streaming): a mixed-space upload is a fixable 4xx,
+    # never a half-ingested document.
+    try:
+        cfg = from_headers(request.headers)
+        embed_selection = embed_signature.request_selection(cfg)
+    except (BYOKError, embeddings.EmbeddingError) as exc:
+        return JSONResponse(status_code=400, content={"error": "byok_invalid", "detail": str(exc)})
+
+    pinned = await embed_signature.get_pin(session_id)
+    if pinned is not None and pinned != embeddings.signature(embed_selection):
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": "embedding_mismatch",
+                "detail": (
+                    f"Your existing documents are embedded with “{pinned}”. Switch back "
+                    f"to that embedding model, or delete all documents to change spaces."
+                ),
+                "pinned": pinned,
+            },
+        )
+
     try:
         _validate_pdf_bytes(data)
         await check_and_increment_ip_upload(client_ip)
@@ -149,7 +189,13 @@ async def upload_document(
     filename = _sanitize_filename(file.filename or "")
 
     return StreamingResponse(
-        _stream_ingestion(pages, doc_id=doc_id, filename=filename, session_id=session_id),
+        _stream_ingestion(
+            pages,
+            doc_id=doc_id,
+            filename=filename,
+            session_id=session_id,
+            embed_selection=embed_selection,
+        ),
         media_type="text/event-stream",
     )
 
@@ -216,4 +262,7 @@ async def delete_document(doc_id: str, session_id: str = Depends(get_tenant_id))
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, detail="Try again in a moment."
         ) from exc
+    # Deleting the last document releases the embedding-space pin, freeing the
+    # account to re-upload with a different embedding model.
+    await embed_signature.release_if_empty(session_id)
     return {"deleted": True}

@@ -75,7 +75,7 @@ def client(app):
 
 
 class _LLMCallGuard:
-    """Counts how many times the LiteLLM boundary was hit. `call_count` stays 0
+    """Counts how many times the LLM boundary was hit. `call_count` stays 0
     on any path that must never touch a model (e.g. the guardrail rail)."""
 
     def __init__(self) -> None:
@@ -84,18 +84,16 @@ class _LLMCallGuard:
 
 @pytest.fixture
 def assert_no_llm_calls():
-    """Patch every LiteLLM entry point with a counter and yield the guard.
+    """Patch every LLM entry point with a counter and yield the guard.
 
     Exercise the code under test, then `assert guard.call_count == 0`. We patch
-    BOTH the module-level functions (`litellm.completion`/`acompletion`) AND the
-    Router methods (`Router.acompletion`/`completion`) — DocChat's pipeline
-    calls through a `litellm.Router(...)`, so patching only the module
-    functions would miss a regression that routes through the Router. The
-    stubs return None instead of raising so a swallowing try/except can't hide
-    the call from the count.
+    BOTH the gateway's public calls (`complete`/`stream` — what agents use) AND
+    `factory.build_chat_model` — constructing a LangChain model is the one
+    unavoidable step of ANY call path, so a regression that bypasses the
+    gateway still trips the counter. The stubs return inert values instead of
+    raising so a swallowing try/except can't hide the call from the count.
     """
-    import litellm
-    from litellm.router import Router
+    from backend.llm import factory, gateway
 
     guard = _LLMCallGuard()
 
@@ -105,12 +103,15 @@ def assert_no_llm_calls():
 
     async def _async(*args, **kwargs):
         guard.call_count += 1
-        return None
+        return ""
+
+    async def _agen(*args, **kwargs):
+        guard.call_count += 1
+        yield ""
 
     with (
-        patch.object(litellm, "completion", _sync),
-        patch.object(litellm, "acompletion", _async),
-        patch.object(Router, "completion", _sync),
-        patch.object(Router, "acompletion", _async),
+        patch.object(gateway, "complete", _async),
+        patch.object(gateway, "stream", _agen),
+        patch.object(factory, "build_chat_model", _sync),
     ):
         yield guard

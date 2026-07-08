@@ -4,20 +4,14 @@ in the prompt.
 """
 
 import json
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from backend.agents.rewrite_agent import rewrite
 
 
-def _fake_response(content: str):
-    return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
-    )
-
-
 def _mock_complete(content: str) -> AsyncMock:
-    return AsyncMock(return_value=_fake_response(content))
+    # gateway.complete returns the reply TEXT (v3), not a response object.
+    return AsyncMock(return_value=content)
 
 
 async def test_valid_json_is_parsed():
@@ -25,7 +19,7 @@ async def test_valid_json_is_parsed():
         {"route": "full", "queries": ["standalone query one", "standalone query two"]}
     )
     with patch(
-        "backend.agents.rewrite_agent.llm_router.complete", _mock_complete(payload)
+        "backend.agents.rewrite_agent.gateway.complete", _mock_complete(payload)
     ):
         result = await rewrite("what about clause 5?", history=[], filenames=["msa.pdf"])
 
@@ -36,7 +30,7 @@ async def test_valid_json_is_parsed():
 async def test_valid_json_strips_markdown_fence():
     payload = "```json\n" + json.dumps({"route": "direct", "queries": []}) + "\n```"
     with patch(
-        "backend.agents.rewrite_agent.llm_router.complete", _mock_complete(payload)
+        "backend.agents.rewrite_agent.gateway.complete", _mock_complete(payload)
     ):
         result = await rewrite("hey there", history=[], filenames=[])
 
@@ -46,7 +40,7 @@ async def test_valid_json_strips_markdown_fence():
 
 async def test_malformed_json_falls_back_to_safe_default():
     with patch(
-        "backend.agents.rewrite_agent.llm_router.complete",
+        "backend.agents.rewrite_agent.gateway.complete",
         _mock_complete("not valid json{{{"),
     ):
         result = await rewrite("what does section 3 say?", history=[], filenames=[])
@@ -58,7 +52,7 @@ async def test_malformed_json_falls_back_to_safe_default():
 async def test_missing_field_falls_back_to_safe_default():
     payload = json.dumps({"route": "full"})  # missing `queries`
     with patch(
-        "backend.agents.rewrite_agent.llm_router.complete", _mock_complete(payload)
+        "backend.agents.rewrite_agent.gateway.complete", _mock_complete(payload)
     ):
         result = await rewrite("summarize page 2", history=[], filenames=[])
 
@@ -69,7 +63,7 @@ async def test_missing_field_falls_back_to_safe_default():
 async def test_full_route_with_out_of_range_query_count_falls_back():
     payload = json.dumps({"route": "full", "queries": ["only one query"]})
     with patch(
-        "backend.agents.rewrite_agent.llm_router.complete", _mock_complete(payload)
+        "backend.agents.rewrite_agent.gateway.complete", _mock_complete(payload)
     ):
         result = await rewrite("tell me about the refunds policy", history=[], filenames=[])
 
@@ -81,7 +75,7 @@ async def test_timeout_falls_back_to_safe_default():
     async def _raise(*args, **kwargs):
         raise TimeoutError("rewriter timed out")
 
-    with patch("backend.agents.rewrite_agent.llm_router.complete", _raise):
+    with patch("backend.agents.rewrite_agent.gateway.complete", _raise):
         result = await rewrite("what is the notice period?", history=[], filenames=[])
 
     assert result.route == "full"
@@ -90,7 +84,7 @@ async def test_timeout_falls_back_to_safe_default():
 
 async def test_empty_question_falls_back_to_broad_query():
     with patch(
-        "backend.agents.rewrite_agent.llm_router.complete", _mock_complete("garbage")
+        "backend.agents.rewrite_agent.gateway.complete", _mock_complete("garbage")
     ):
         result = await rewrite("   ", history=[], filenames=[])
 
@@ -105,7 +99,7 @@ async def test_history_is_included_in_the_prompt():
         {"role": "user", "content": "What is the termination notice period?"},
         {"role": "assistant", "content": "30 days' written notice [1]."},
     ]
-    with patch("backend.agents.rewrite_agent.llm_router.complete", complete_mock):
+    with patch("backend.agents.rewrite_agent.gateway.complete", complete_mock):
         await rewrite("what about clause 5?", history=history, filenames=["msa.pdf"])
 
     messages = complete_mock.await_args.args[1]
@@ -119,7 +113,7 @@ async def test_history_is_included_in_the_prompt():
 async def test_direct_route_allows_empty_queries():
     payload = json.dumps({"route": "direct", "queries": []})
     with patch(
-        "backend.agents.rewrite_agent.llm_router.complete", _mock_complete(payload)
+        "backend.agents.rewrite_agent.gateway.complete", _mock_complete(payload)
     ):
         result = await rewrite("thanks!", history=[], filenames=[])
 

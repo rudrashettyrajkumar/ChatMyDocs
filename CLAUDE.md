@@ -14,17 +14,27 @@ Goal: live demo + Loom video that wins freelance clients. Built in ~1 week.
 
 ## Hard constraints
 - ₹0 incremental cost: existing Railway Hobby, Qdrant free cluster, Upstash free,
-  OpenRouter credit. Never add a paid service without flagging it.
-- **No LangChain/LangGraph/agent frameworks.** Plain Python asyncio + FastAPI + LiteLLM.
-  This is a deliberate, documented decision — it's also a portfolio talking point.
-- Container stays stateless and featherweight: no local ML models, no files on disk;
-  PDFs are parsed in memory, only vectors + Redis metadata persist.
+  OpenRouter credit. Never add a paid service without flagging it. BYOK usage bills
+  the USER's key, never ours.
+- **LangChain + LangGraph ARE the LLM layer (v3, 2026-07-08, Raj-requested — this
+  REVERSES the original "no frameworks" lock).** LiteLLM is gone. The graph lives in
+  `backend/graph/chat_graph.py`; provider construction only in `backend/llm/factory.py`;
+  agents call `backend/llm/gateway.py`, never a provider SDK.
+- Container stays stateless and near-featherweight: no torch, no files on disk; PDFs
+  parsed in memory. One deliberate exception: FlashRank's ~4MB ONNX reranker
+  (degrades to no-op if absent).
+- **BYOK keys are never stored server-side.** They live in the browser (localStorage)
+  and arrive per-request via `X-LLM-*` / `X-Embed-*` headers, parsed ONLY in
+  `backend/llm/runconfig.py`. Never log a key; never write one to Redis.
 
-## Stack (locked)
-FastAPI on Railway · Qdrant Cloud (collection `docchat_chunks`, 768-dim cosine) ·
-Upstash Redis (`dc:` prefix) · LiteLLM Router (OpenRouter → Groq) ·
-gemini-embedding-001 @ 768 · PyMuPDF · React 18 + Vite + Tailwind + react-router on
-Cloudflare Pages.
+## Stack (v3)
+FastAPI on Railway · Qdrant Cloud (collection `docchat_chunks`, 768-dim cosine — ALL
+embedding providers pinned to 768 via Matryoshka `dimensions`) · Upstash Redis (`dc:`
+prefix) · LangChain (ChatOpenAI for OpenRouter/Groq/OpenAI + ChatAnthropic +
+ChatGoogleGenerativeAI) + LangGraph workflow · FlashRank reranker · PyMuPDF ·
+React 18 + Vite + Tailwind + react-router + motion on Cloudflare Pages.
+BYOK providers: Groq (free) · OpenRouter (free tier) · OpenAI · Anthropic · Gemini;
+demo mode (no key) = env-configured OpenRouter→Groq chain, original quotas.
 
 ## Auth & tenancy (added post-E-design, overrides original "no auth")
 Self-contained **email/password auth**, no external provider: users live in Upstash
@@ -44,7 +54,11 @@ glassmorphism UI with a dark-mode toggle (see `docs/DESIGN-SYSTEM.md`).
    point in retrieval_agent. The tenant value is now the authenticated user id; the
    payload field name stays `session_id`. A test asserts cross-tenant isolation.
 3. All model IDs, keys, and limits from env via `backend/utils/config.py` — never
-   hardcoded.
+   hardcoded — EXCEPT the BYOK catalog (`backend/llm/catalog.py`), which is the one
+   deliberate registry of user-selectable models, and per-request BYOK headers.
+   3b. A tenant's corpus lives in ONE embedding space: first ingest pins
+   `dc:embedsig:{tenant}`; mismatched uploads 409; queries embed with the PINNED
+   model (`services/embed_signature.py`). Deleting the last doc releases the pin.
 4. Grounded answers only: cite [n] per claim; on low relevance say the documents don't
    cover it. Never invent document content.
 5. Errors degrade, never break: timeout + fallback on every external call; the user

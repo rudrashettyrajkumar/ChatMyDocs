@@ -73,6 +73,14 @@ class Settings(BaseSettings):
     RELEVANCE_THRESHOLD: float = 0.30
     CHUNK_TOKENS: int = 450
     CHUNK_OVERLAP: int = 80
+    # --- Retrieval quality (v3 BYOK architecture) -------------------------
+    # RRF over-fetches RETRIEVAL_POOL fused candidates; the open-source
+    # cross-encoder rerank (FlashRank) then cuts them to RERANK_TOP_K for the
+    # answerer. RERANK_ENABLED=false (or a missing flashrank install) degrades
+    # to the plain RRF top-RERANK_TOP_K — the original E3 behaviour.
+    RERANK_ENABLED: bool = True
+    RERANK_TOP_K: int = 6
+    RETRIEVAL_POOL: int = 12
     # The rolling window for the per-day question quota (the "day" in
     # MAX_QUESTIONS_PER_DAY). Since auth landed, accounts and their documents
     # persist indefinitely; this no longer governs data expiry.

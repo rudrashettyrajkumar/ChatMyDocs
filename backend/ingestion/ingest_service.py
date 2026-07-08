@@ -24,6 +24,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from backend.ingestion.chunker import Chunk, chunk_pages
+from backend.llm.runconfig import Selection
 from backend.utils.config import get_settings
 from backend.utils.embeddings import EmbeddingError, embed
 from backend.utils.qdrant_client import get_qdrant
@@ -85,6 +86,7 @@ async def run_ingestion(
     doc_id: str,
     filename: str,
     session_id: str,
+    embed_selection: Selection | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield progress events per spec Req 6's exact shapes:
 
@@ -111,10 +113,10 @@ async def run_ingestion(
         texts = [c.text for c in batch]
 
         try:
-            vectors = await embed(texts)
+            vectors = await embed(texts, embed_selection)
         except EmbeddingError:
             try:
-                vectors = await embed(texts)  # one retry, per spec Req 4
+                vectors = await embed(texts, embed_selection)  # one retry, per spec Req 4
             except EmbeddingError as exc:
                 _log.warning("embedding failed twice; rolling back", extra={"doc_id": doc_id})
                 await _delete_doc_points(collection, doc_id)

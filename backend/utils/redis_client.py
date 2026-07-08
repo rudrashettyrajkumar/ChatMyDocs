@@ -63,6 +63,9 @@ class UpstashRedis:
     async def get(self, key: str) -> str | None:
         return await self._command("GET", key)
 
+    async def set(self, key: str, value: Any) -> str:
+        return await self._command("SET", key, value)
+
     async def setex(self, key: str, seconds: int, value: Any) -> str:
         return await self._command("SETEX", key, seconds, value)
 

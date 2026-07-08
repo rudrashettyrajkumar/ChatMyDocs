@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from backend.api.deps import get_tenant_id
+from backend.llm.runconfig import BYOKError, from_headers
 from backend.middleware.rate_limit import QuestionLimitExceeded, check_question_limit
 from backend.pipeline.chat_pipeline import run_chat_pipeline
 from backend.services.history import load_turns
@@ -53,9 +54,18 @@ async def _document_filenames(session_id: str) -> list[str]:
 @router.post("/chat/stream", response_model=None)
 async def chat_stream(
     body: ChatRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
     session_id: str = Depends(get_tenant_id),
 ) -> StreamingResponse | JSONResponse:
+    # BYOK headers are validated BEFORE committing to the stream (same
+    # validation-before-streaming split as documents.py) — a bad provider or
+    # missing key is a fixable 400, not a mid-stream error event.
+    try:
+        cfg = from_headers(request.headers)
+    except BYOKError as exc:
+        return JSONResponse(status_code=400, content={"error": "byok_invalid", "detail": str(exc)})
+
     try:
         await check_question_limit(session_id)
     except QuestionLimitExceeded as exc:
@@ -73,6 +83,7 @@ async def chat_stream(
             history_turns=history_turns,
             filenames=filenames,
             background_tasks=background_tasks,
+            cfg=cfg,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},

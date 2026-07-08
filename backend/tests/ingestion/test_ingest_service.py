@@ -48,7 +48,7 @@ def _batch_size(monkeypatch):
 
 async def test_happy_path_progress_event_sequence():
     qdrant = _fake_qdrant()
-    embed_mock = AsyncMock(side_effect=lambda texts: [[0.1, 0.2] for _ in texts])
+    embed_mock = AsyncMock(side_effect=lambda texts, sel=None: [[0.1, 0.2] for _ in texts])
 
     with (
         patch("backend.ingestion.ingest_service.chunk_pages", return_value=_FAKE_CHUNKS),
@@ -97,7 +97,7 @@ async def test_mid_embed_failure_rolls_back_and_emits_error():
 
     call_count = 0
 
-    async def _embed_fails_second_batch(texts):
+    async def _embed_fails_second_batch(texts, sel=None):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -138,7 +138,7 @@ async def test_mid_embed_failure_rolls_back_and_emits_error():
 async def test_upsert_failure_rolls_back_and_emits_error():
     qdrant = _fake_qdrant()
     qdrant.upsert = AsyncMock(side_effect=[None, RuntimeError("qdrant unavailable")])
-    embed_mock = AsyncMock(side_effect=lambda texts: [[0.1, 0.2] for _ in texts])
+    embed_mock = AsyncMock(side_effect=lambda texts, sel=None: [[0.1, 0.2] for _ in texts])
 
     with (
         patch("backend.ingestion.ingest_service.chunk_pages", return_value=_FAKE_CHUNKS),

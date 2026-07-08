@@ -115,7 +115,7 @@ def fake_qdrant(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def fake_embed(monkeypatch):
-    embed_mock = AsyncMock(side_effect=lambda texts: [[0.1, 0.2] for _ in texts])
+    embed_mock = AsyncMock(side_effect=lambda texts, sel=None: [[0.1, 0.2] for _ in texts])
     monkeypatch.setattr("backend.ingestion.ingest_service.embed", embed_mock)
     return embed_mock
 

@@ -1,88 +1,127 @@
-"""Batched embedding — the canonical gateway, shared by ingestion and retrieval.
+"""Batched BYOK embeddings — the canonical gateway, shared by ingestion and retrieval.
 
-Ingestion (E2) and query embedding (E3) must use the SAME `gemini-embedding-001`
-model at 768 dims, served VIA OpenRouter. Mixing models or gateways between
-ingest and query would put the two vectors in different spaces and silently
-wreck retrieval — so the gateway quirks live here, in ONE place.
+Ingestion (E2) and query embedding (E3) must use the SAME model at the SAME
+dimensionality. Mixing models between ingest and query puts vectors in
+different spaces and silently wrecks retrieval — so per-tenant pinning exists
+(`services/embed_signature.py`) and every provider quirk lives HERE, in one
+place.
 
-OpenRouter gotcha: POST OpenRouter's OpenAI-compatible `/embeddings` with raw
-httpx, sending `dimensions=768`. litellm rejects `dimensions` for
-`openrouter/*` (would silently return a different dimensionality) and the
-openai SDK defaults to base64 encoding. A 200 can still carry an `{"error":
-...}` body — a paid-credit wall (fail fast) or a transient hiccup.
+BYOK (v3): `embed()` takes an optional `Selection` (provider/model/key from
+the request's `X-Embed-*` headers). All three embedding providers speak
+OpenAI's `/embeddings` wire protocol — OpenRouter natively, OpenAI natively,
+Gemini via its OpenAI-compatible endpoint — so one httpx code path covers
+them. No selection → the server's env default (demo mode, original
+behaviour).
 
-Batched at `EMBED_BATCH_SIZE` (config, default 100) per request — a 100-page
-PDF's ~150 chunks costs 2 requests (ARCHITECTURE §3.1).
+Every request pins `dimensions=768` (EMBED_DIM): OpenAI's text-embedding-3,
+Gemini's gemini-embedding-001, and Qwen3-Embedding all support Matryoshka
+truncation, which is what lets ONE 768-dim Qdrant collection serve every
+provider. A provider that ignores the parameter is caught by the hard
+dimension check below — a clear error beats silently poisoned vectors.
+
+Gotcha kept from v1: a 200 can still carry an `{"error": ...}` body on
+OpenRouter — a paid-credit wall (fail fast) or a transient hiccup.
 """
 
 from __future__ import annotations
 
 import httpx
 
+from backend.llm.runconfig import Selection
 from backend.utils.config import get_settings
 
 EMBED_DIM = 768
-# OpenRouter's OpenAI-compatible base (not a secret; the key comes from config).
-_OPENROUTER_BASE = "https://openrouter.ai/api/v1"
+# OpenAI-compatible bases per embedding provider (not secrets; keys come from
+# the request or config).
+_BASES: dict[str, str] = {
+    "openrouter": "https://openrouter.ai/api/v1",
+    "openai": "https://api.openai.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+}
 # Sits on the pre-reply hot path for queries and on the ingest path for chunks;
 # cap it tight so a slow gateway degrades rather than hangs.
 EMBED_TIMEOUT_S = 10.0
 
 
 class EmbeddingError(RuntimeError):
-    """Embedding could not be produced (gateway error or credit wall).
+    """Embedding could not be produced (gateway error, credit wall, bad dims).
 
     Callers (retrieval_agent, ingest_service) catch this and degrade — e.g. the
     chat path answers without quoted sources rather than hanging.
     """
 
 
-async def _embed_batch(texts: list[str], model: str, api_key: str | None) -> list[list[float]]:
-    """One OpenRouter `/embeddings` call for a single batch, order-preserving."""
+def server_default_selection() -> Selection:
+    """Demo-mode embedding selection from env (litellm-style `EMBED_MODEL` id)."""
+    s = get_settings()
+    model = s.EMBED_MODEL
+    if model.startswith("openrouter/"):
+        return Selection(
+            provider="openrouter",
+            model=model.removeprefix("openrouter/"),
+            api_key=s.OPENROUTER_API_KEY or "",
+        )
+    # A bare id is a config error worth failing loudly on, not routing around.
+    raise EmbeddingError(f"EMBED_MODEL must be an openrouter/* id, got {model!r}")
+
+
+def signature(selection: Selection) -> str:
+    """The pinning identity of an embedding space: `provider/model`."""
+    return f"{selection.provider}/{selection.model}"
+
+
+async def _embed_batch(texts: list[str], selection: Selection) -> list[list[float]]:
+    """One OpenAI-compatible `/embeddings` call for a single batch, order-preserving."""
+    base = _BASES.get(selection.provider)
+    if base is None:
+        raise EmbeddingError(f"provider {selection.provider!r} cannot serve embeddings")
     try:
         async with httpx.AsyncClient(timeout=EMBED_TIMEOUT_S) as http:
             resp = await http.post(
-                f"{_OPENROUTER_BASE}/embeddings",
-                headers={"Authorization": f"Bearer {api_key}"},
+                f"{base}/embeddings",
+                headers={"Authorization": f"Bearer {selection.api_key}"},
                 json={
-                    "model": model.removeprefix("openrouter/"),
+                    "model": selection.model,
                     "input": texts,
                     "dimensions": EMBED_DIM,
                 },
             )
             resp.raise_for_status()
             body = resp.json()
-    except (httpx.HTTPError, ValueError) as exc:  # network, timeout, bad JSON
+    except (httpx.HTTPError, ValueError) as exc:  # network, timeout, 4xx/5xx, bad JSON
         raise EmbeddingError(f"embedding request failed: {exc}") from exc
 
     rows = body.get("data")
     if not rows:
-        # OpenRouter returns 200 with an {"error": ...} body instead of a status code.
+        # OpenRouter can return 200 with an {"error": ...} body instead of a status code.
         err = body.get("error") or {}
         msg = err.get("message", body) if isinstance(err, dict) else err
-        raise EmbeddingError(f"openrouter returned no embedding data: {msg}")
+        raise EmbeddingError(f"{selection.provider} returned no embedding data: {msg}")
     rows = sorted(rows, key=lambda row: row.get("index", 0))
-    return [row["embedding"] for row in rows]
+    vectors = [row["embedding"] for row in rows]
+    for vector in vectors:
+        if len(vector) != EMBED_DIM:
+            raise EmbeddingError(
+                f"{signature(selection)} returned {len(vector)}-dim vectors; DocChat "
+                f"requires {EMBED_DIM} — pick an embedding model that supports "
+                f"{EMBED_DIM} dimensions"
+            )
+    return vectors
 
 
-async def embed(texts: list[str]) -> list[list[float]]:
-    """Embed `texts` → 768d vectors, batching `EMBED_BATCH_SIZE` per request.
+async def embed(texts: list[str], selection: Selection | None = None) -> list[list[float]]:
+    """Embed `texts` → 768-dim vectors, batching `EMBED_BATCH_SIZE` per request.
 
     Order-preserving: returns vectors aligned to `texts`. Raises `EmbeddingError`
-    on any failure (empty body, credit wall, network) so the caller can degrade.
+    on any failure (empty body, credit wall, wrong dims, network) so the caller
+    can degrade.
     """
     if not texts:
         return []
-    settings = get_settings()
-    model = settings.EMBED_MODEL
-    if not model.startswith("openrouter/"):
-        # DocChat is OpenRouter-only for embeddings; a stray bare id is a config
-        # error, not something to silently route around.
-        raise EmbeddingError(f"EMBED_MODEL must be an openrouter/* id, got {model!r}")
-
-    batch_size = settings.EMBED_BATCH_SIZE
+    sel = selection or server_default_selection()
+    batch_size = get_settings().EMBED_BATCH_SIZE
     vectors: list[list[float]] = []
     for start in range(0, len(texts), batch_size):
         batch = texts[start : start + batch_size]
-        vectors.extend(await _embed_batch(batch, model, settings.OPENROUTER_API_KEY))
+        vectors.extend(await _embed_batch(batch, sel))
     return vectors

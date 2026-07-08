@@ -76,7 +76,7 @@ async def _fake_tokens(*parts: str):
 
 async def test_stream_answer_yields_router_tokens_through_guard():
     with patch(
-        "backend.agents.answer_agent.llm_router.stream",
+        "backend.agents.answer_agent.gateway.stream",
         return_value=_fake_tokens("The ", "answer ", "is ", "42 [1]."),
     ) as mock_stream:
         out = [tok async for tok in stream_answer(_CHUNKS, [], "what is it?", False)]
@@ -89,7 +89,7 @@ async def test_stream_answer_propagates_router_failure():
         raise TimeoutError("provider timeout")
         yield  # pragma: no cover - makes this an async generator function
 
-    with patch("backend.agents.answer_agent.llm_router.stream", side_effect=_boom):
+    with patch("backend.agents.answer_agent.gateway.stream", side_effect=_boom):
         with pytest.raises(TimeoutError):
             async for _ in stream_answer(_CHUNKS, [], "q", False):
                 pass
@@ -97,7 +97,7 @@ async def test_stream_answer_propagates_router_failure():
 
 async def test_stream_answer_propagates_guardrail_trip_on_leaked_marker():
     with patch(
-        "backend.agents.answer_agent.llm_router.stream",
+        "backend.agents.answer_agent.gateway.stream",
         return_value=_fake_tokens("safe start ", "[CONTEXT] leaking"),
     ):
         with pytest.raises(GuardrailTripped):

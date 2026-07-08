@@ -11,7 +11,13 @@ from fastapi import BackgroundTasks
 
 from backend.agents.retrieval_agent import RetrievalResult, RetrievedChunk
 from backend.agents.rewrite_agent import Rewrite
+from backend.llm.runconfig import Selection
 from backend.pipeline.chat_pipeline import run_chat_pipeline
+
+# The pre-answer steps (rewrite/retrieve/rerank) live in the LangGraph module
+# now (v3); the pipeline keeps SSE framing, answer streaming, and storage.
+_GRAPH = "backend.graph.chat_graph"
+_EMBED_SEL = Selection(provider="openrouter", model="test-embed", api_key="k")
 
 _CHUNK = RetrievedChunk(
     n=1,
@@ -84,10 +90,8 @@ async def test_no_docs_path_makes_zero_llm_calls_and_stores_both_turns(assert_no
 async def test_direct_route_skips_retrieval_entirely():
     rewrite_result = Rewrite(route="direct", queries=[])
     with (
-        patch(
-            "backend.pipeline.chat_pipeline.rewrite", new=AsyncMock(return_value=rewrite_result)
-        ),
-        patch("backend.pipeline.chat_pipeline.retrieve", new=AsyncMock()) as retrieve_mock,
+        patch(f"{_GRAPH}.rewrite", new=AsyncMock(return_value=rewrite_result)),
+        patch(f"{_GRAPH}.retrieve", new=AsyncMock()) as retrieve_mock,
         patch(
             "backend.pipeline.chat_pipeline.stream_answer",
             return_value=_tokens("Hi ", "there!"),
@@ -105,13 +109,14 @@ async def test_full_route_retrieves_and_event_order_is_tokens_then_sources_then_
     rewrite_result = Rewrite(route="full", queries=["revenue growth"])
     retrieval_result = RetrievalResult(chunks=[_CHUNK], low_relevance=False)
     with (
+        patch(f"{_GRAPH}.rewrite", new=AsyncMock(return_value=rewrite_result)),
         patch(
-            "backend.pipeline.chat_pipeline.rewrite", new=AsyncMock(return_value=rewrite_result)
-        ),
-        patch(
-            "backend.pipeline.chat_pipeline.retrieve",
-            new=AsyncMock(return_value=retrieval_result),
+            f"{_GRAPH}.retrieve", new=AsyncMock(return_value=retrieval_result)
         ) as retrieve_mock,
+        patch(
+            f"{_GRAPH}.embed_signature.query_selection",
+            new=AsyncMock(return_value=_EMBED_SEL),
+        ),
         patch(
             "backend.pipeline.chat_pipeline.stream_answer",
             return_value=_tokens("Revenue ", "grew ", "12% [1]."),
@@ -125,7 +130,11 @@ async def test_full_route_retrieves_and_event_order_is_tokens_then_sources_then_
     ):
         frames, bg = await _run("what was revenue growth?", ["report.pdf"])
         await bg()
-    retrieve_mock.assert_awaited_once_with(["revenue growth"], "sess-1")
+    retrieve_mock.assert_awaited_once()
+    args, kwargs = retrieve_mock.await_args
+    assert args[0] == ["revenue growth"]
+    assert args[1] == "sess-1"
+    assert kwargs["embed_selection"] == _EMBED_SEL  # queries embed in the pinned space
     assert _event_names(frames) == ["token", "token", "token", "sources", "done"]
     assert append.await_count == 2
 
@@ -138,12 +147,11 @@ async def test_mid_stream_failure_emits_error_event_and_stores_nothing():
     rewrite_result = Rewrite(route="full", queries=["q"])
     retrieval_result = RetrievalResult(chunks=[], low_relevance=True)
     with (
+        patch(f"{_GRAPH}.rewrite", new=AsyncMock(return_value=rewrite_result)),
+        patch(f"{_GRAPH}.retrieve", new=AsyncMock(return_value=retrieval_result)),
         patch(
-            "backend.pipeline.chat_pipeline.rewrite", new=AsyncMock(return_value=rewrite_result)
-        ),
-        patch(
-            "backend.pipeline.chat_pipeline.retrieve",
-            new=AsyncMock(return_value=retrieval_result),
+            f"{_GRAPH}.embed_signature.query_selection",
+            new=AsyncMock(return_value=_EMBED_SEL),
         ),
         patch("backend.pipeline.chat_pipeline.stream_answer", return_value=_boom()),
         patch("backend.pipeline.chat_pipeline.history.append_turn", new=AsyncMock()) as append,

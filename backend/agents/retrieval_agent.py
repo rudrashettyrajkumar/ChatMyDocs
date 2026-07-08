@@ -25,6 +25,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from backend.llm.runconfig import Selection
 from backend.utils.config import get_settings
 from backend.utils.embeddings import EmbeddingError, embed
 from backend.utils.qdrant_client import get_qdrant
@@ -126,8 +127,17 @@ def _to_chunk(point: Any, n: int) -> RetrievedChunk:
     )
 
 
-async def retrieve(queries: list[str], session_id: str) -> RetrievalResult:
+async def retrieve(
+    queries: list[str],
+    session_id: str,
+    embed_selection: Selection | None = None,
+    pool: int | None = None,
+) -> RetrievalResult:
     """Embed `queries`, search Qdrant filtered to `session_id`, fuse, and label.
+
+    `embed_selection` is the BYOK embedding space to embed queries in (None →
+    server default). `pool` widens the fused candidate list beyond RRF's
+    default top-6 so a downstream reranker has something to work with.
 
     Never raises: any failure degrades to `RetrievalResult([], low_relevance=True)`.
     """
@@ -136,7 +146,7 @@ async def retrieve(queries: list[str], session_id: str) -> RetrievalResult:
 
     settings = get_settings()
     try:
-        vectors = await embed(queries)
+        vectors = await embed(queries, embed_selection)
     except EmbeddingError as exc:
         _log.warning("query embedding failed; degrading", extra={"error": str(exc)})
         return _EMPTY_RESULT
@@ -145,7 +155,11 @@ async def retrieve(queries: list[str], session_id: str) -> RetrievalResult:
     if not result_lists:
         return _EMPTY_RESULT
 
-    fused = reciprocal_rank_fusion(result_lists)
+    fused = (
+        reciprocal_rank_fusion(result_lists, top_k=pool)
+        if pool
+        else reciprocal_rank_fusion(result_lists)
+    )
     if not fused:
         return _EMPTY_RESULT
 

@@ -1,7 +1,7 @@
 """Answer agent — streamed, cited reply (ARCHITECTURE §3.2 step 5, §6; spec E4 Req 3).
 
-Streams through the `answerer` LiteLLM role (llm_router: OpenRouter → Groq
-failover, 20s first-token timeout — ROLE_TIMEOUTS), wrapped in
+Streams through the `answerer` gateway role (BYOK model or demo failover
+chain, 20s first-token timeout — gateway.ROLE_TIMEOUTS), wrapped in
 `guardrails.guard_stream()` so a leaked prompt-block marker cuts the stream
 before it reaches the client (E1's output rail).
 
@@ -19,7 +19,9 @@ import re
 from collections.abc import AsyncIterator
 
 from backend.agents.retrieval_agent import RetrievedChunk
-from backend.utils import llm_router, prompt_assembly
+from backend.llm import gateway
+from backend.llm.runconfig import DEFAULT, RunConfig
+from backend.utils import prompt_assembly
 from backend.utils.guardrails import guard_stream
 
 # Matches citation markers the model emits inline, e.g. "...30 days [1][3]."
@@ -31,13 +33,14 @@ def stream_answer(
     history: list[dict[str, str]],
     question: str,
     low_relevance: bool,
+    cfg: RunConfig = DEFAULT,
 ) -> AsyncIterator[str]:
     """Guarded answer token stream for the assembled prompt (spec Req 2/3).
 
-    Any router/provider failure or `GuardrailTripped` propagates to the caller.
+    Any gateway/provider failure or `GuardrailTripped` propagates to the caller.
     """
     messages = prompt_assembly.build_messages(chunks, history, question, low_relevance)
-    return guard_stream(llm_router.stream("answerer", messages))
+    return guard_stream(gateway.stream("answerer", messages, cfg))
 
 
 def _pages(chunk: RetrievedChunk) -> str:

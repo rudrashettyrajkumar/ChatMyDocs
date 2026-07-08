@@ -1,8 +1,9 @@
 """Query rewrite agent — question + history → route + standalone queries.
 
-ARCHITECTURE §3.2 step 2, spec E3 Req 1. One call to the `rewriter` LiteLLM
-alias (role timeout 6s, set in llm_router.ROLE_TIMEOUTS) turns the raw user
-turn into the strict control signal the rest of the chat pipeline runs on:
+ARCHITECTURE §3.2 step 2, spec E3 Req 1. One call to the `rewriter` gateway
+role (role timeout 6s, set in gateway.ROLE_TIMEOUTS; BYOK-aware via the
+request's `RunConfig`) turns the raw user turn into the strict control signal
+the rest of the chat pipeline runs on:
 `route` (direct = answer from history alone, retrieval skipped; full = normal
 RAG) and 2-4 standalone English `queries` for multi-query retrieval.
 
@@ -28,7 +29,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ValidationError, field_validator
 
-from backend.utils import llm_router
+from backend.llm import gateway
+from backend.llm.runconfig import DEFAULT, RunConfig
 
 _log = logging.getLogger("docchat.rewrite_agent")
 
@@ -74,24 +76,24 @@ async def rewrite(
     question: str,
     history: list[dict[str, Any]] | None = None,
     filenames: list[str] | None = None,
+    cfg: RunConfig = DEFAULT,
 ) -> Rewrite:
     """Turn one user turn into a validated `Rewrite` (never raises).
 
     `history` is recent turns (oldest-first, dicts with `role`/`content`); only
     the last 6 are shown to the model. `filenames` are the session's uploaded
-    document names, given as context for what "the document" refers to. Any
+    document names, given as context for what "the document" refers to. `cfg`
+    carries the request's BYOK model selection (demo default otherwise). Any
     failure -> the safe default (`route=full`, `queries=[question]`), logged
     with its reason.
     """
     messages = _build_messages(question, history or [], filenames or [])
     try:
-        response = await llm_router.complete(
-            "rewriter", messages, response_format={"type": "json_object"}
-        )
+        text = await gateway.complete("rewriter", messages, cfg, json_mode=True)
     except Exception as exc:  # noqa: BLE001 — boundary: any LLM/timeout failure degrades
         return _default_rewrite(question, f"llm_call_failed: {exc!r}")
     try:
-        return _to_rewrite(_loads(_content_of(response)))
+        return _to_rewrite(_loads(text))
     except _ParseError as exc:
         return _default_rewrite(question, exc.reason)
 
@@ -105,14 +107,6 @@ def _to_rewrite(data: dict[str, Any]) -> Rewrite:
     if parsed.route == "full" and not (_MIN_QUERIES <= len(parsed.queries) <= _MAX_QUERIES):
         raise _ParseError("query_count_out_of_range")
     return parsed
-
-
-def _content_of(response: Any) -> str:
-    """Pull the text content out of a LiteLLM response (defensive)."""
-    try:
-        return response.choices[0].message.content or ""
-    except (AttributeError, IndexError, TypeError) as exc:
-        raise _ParseError(f"unreadable_response: {exc}") from exc
 
 
 def _loads(raw: str) -> dict[str, Any]:
