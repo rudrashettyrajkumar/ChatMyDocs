@@ -40,13 +40,16 @@ class Settings(BaseSettings):
 
     # --- Models (migrate by changing env alone; never touch agent code) --
     # Demo mode runs EXCLUSIVELY on free-tier OPEN-SOURCE models so it never
-    # burns paid credit: NVIDIA Nemotron `:free` via OpenRouter (LLM + 768-dim
-    # Matryoshka embeddings), with open-source Llama on Groq as the failover
-    # (ARCHITECTURE §4). Model ids verified working July 2026 — `:free`
-    # lineups rotate, so re-verify at openrouter.ai/collections/free-models
-    # before changing these.
-    REWRITER_MODEL: str = "openrouter/nvidia/nemotron-3-nano-30b-a3b:free"
-    ANSWERER_MODEL: str = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    # burns paid credit. CHAT runs on Groq's open-source Llama 3.3 70B: it's
+    # LPU-fast, cites reliably (verified 6/6), and Groq's free tier is ~1000
+    # req/day/model vs OpenRouter's 200/day — so chat gets the roomier budget
+    # and OpenRouter's scarce free tier is spent only on EMBEDDINGS (its unique
+    # capability here; Groq has no embedding model). The diverse fallback for
+    # each chat role is OpenRouter's NVIDIA Nemotron (see factory.demo_chain).
+    # Embeddings: NVIDIA `:free` on OpenRouter, 768-dim Matryoshka. `:free`
+    # lineups rotate — re-verify at openrouter.ai/collections/free-models.
+    REWRITER_MODEL: str = "groq/llama-3.3-70b-versatile"
+    ANSWERER_MODEL: str = "groq/llama-3.3-70b-versatile"
     EMBED_MODEL: str = "openrouter/nvidia/llama-nemotron-embed-vl-1b-v2:free"
 
     # --- Provider credentials -------------------------------------------

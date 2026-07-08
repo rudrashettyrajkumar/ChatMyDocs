@@ -10,8 +10,49 @@ to Groq/OpenAI/Anthropic/Gemini calls.
 
 from __future__ import annotations
 
-from backend.llm.factory import build_chat_model
+from types import SimpleNamespace
+
+from backend.llm import factory
+from backend.llm.factory import build_chat_model, demo_chain
 from backend.llm.runconfig import Selection
+
+
+def _settings(**over):
+    base = {
+        "REWRITER_MODEL": "groq/llama-3.3-70b-versatile",
+        "ANSWERER_MODEL": "groq/llama-3.3-70b-versatile",
+        "OPENROUTER_API_KEY": "or-key",
+        "GROQ_API_KEY": "groq-key",
+    }
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def test_demo_chain_groq_primary_openrouter_fallback(monkeypatch):
+    """Default demo config: chat on Groq, diverse fallback to OpenRouter."""
+    monkeypatch.setattr(factory, "get_settings", lambda: _settings())
+    chain = demo_chain("answerer")
+    assert [(s.provider, s.model) for s in chain] == [
+        ("groq", "llama-3.3-70b-versatile"),
+        ("openrouter", "nvidia/nemotron-3-super-120b-a12b:free"),
+    ]
+
+
+def test_demo_chain_openrouter_primary_falls_back_to_groq(monkeypatch):
+    """If a deploy pins an OpenRouter chat model, the fallback flips to Groq."""
+    monkeypatch.setattr(
+        factory, "get_settings",
+        lambda: _settings(ANSWERER_MODEL="openrouter/nvidia/nemotron-3-super-120b-a12b:free"),
+    )
+    chain = demo_chain("answerer")
+    assert [s.provider for s in chain] == ["openrouter", "groq"]
+
+
+def test_demo_chain_drops_provider_with_no_key(monkeypatch):
+    """A missing fallback key drops that deployment rather than crashing."""
+    monkeypatch.setattr(factory, "get_settings", lambda: _settings(OPENROUTER_API_KEY=None))
+    chain = demo_chain("answerer")
+    assert [s.provider for s in chain] == ["groq"]
 
 
 def test_openrouter_binds_reasoning_disabled():

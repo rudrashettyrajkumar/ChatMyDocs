@@ -427,14 +427,23 @@ they live in localStorage and ride each request as headers —
 (embeddings) — parsed and validated once per request in `backend/llm/runconfig.py`
 (bad input → 400 `byok_invalid` BEFORE any stream commits).
 
-- **No headers → demo mode**: the env-driven OpenRouter→Groq chain on the server's
-  keys, with the existing daily quotas (the ₹0 story is untouched). **Demo mode
-  serves ONLY free-tier OPEN-SOURCE models** (verified working July 2026): NVIDIA
-  Nemotron `:free` via OpenRouter for chat (`nemotron-3-super-120b-a12b:free`
-  answerer, `nemotron-3-nano-30b-a3b:free` rewriter) and embeddings
-  (`llama-nemotron-embed-vl-1b-v2:free`, $0, Matryoshka 768-dim), with open-source
-  Llama 3.3 70B on Groq's free tier as failover — never a paid/proprietary model.
-  When the free tier saturates, error messages say so and point users at BYOK.
+- **No headers → demo mode**: an env-driven two-provider chain on the server's keys,
+  with the existing daily quotas (the ₹0 story is untouched). **Demo mode serves ONLY
+  free-tier OPEN-SOURCE models** (verified working July 2026), split by each provider's
+  strengths:
+  - **Chat** (rewriter + answerer) on **Groq's Llama 3.3 70B** — LPU-fast, a reliable
+    citer (verified 6/6 vs flaky free reasoning models), and Groq's free tier is
+    ~1000 req/day/model vs OpenRouter's ~200/day.
+  - **Embeddings** on **OpenRouter's NVIDIA `llama-nemotron-embed-vl-1b-v2:free`**
+    ($0, Matryoshka 768-dim) — OpenRouter's scarce free tier is reserved for
+    embeddings, its unique capability here (Groq has no embedding model).
+  - **Diverse fallback**: each chat role fails over to the *other* free provider
+    (Groq↔OpenRouter Nemotron `:free`), so a rate-limit or outage on one degrades to
+    the other. `factory.demo_chain` builds this ordered chain.
+  Never a paid/proprietary model. When the free tier saturates, error messages say so
+  and point users at BYOK. (An earlier v3 iteration ran chat on OpenRouter Nemotron;
+  live testing showed it cited unreliably and OpenRouter's 200/day cap is tight, so
+  chat moved to Groq.)
 - **BYOK gets no server fallback** — a broken user key fails with a fixable,
   provider-naming error event, never silently burns demo credit.
 

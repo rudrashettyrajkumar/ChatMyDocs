@@ -8,9 +8,10 @@ from backend.utils.config import REQUIRED_IN_PROD, Settings
 def test_defaults_when_env_present():
     s = Settings()
     assert s.ENV == "dev"
-    # Demo mode is free-tier open-source only — never a paid model.
-    assert s.REWRITER_MODEL == "openrouter/nvidia/nemotron-3-nano-30b-a3b:free"
-    assert s.ANSWERER_MODEL == "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    # Demo mode is free-tier open-source only — chat on Groq Llama (reliable
+    # citer, roomier free tier), embeddings on OpenRouter NVIDIA.
+    assert s.REWRITER_MODEL == "groq/llama-3.3-70b-versatile"
+    assert s.ANSWERER_MODEL == "groq/llama-3.3-70b-versatile"
     assert s.EMBED_MODEL == "openrouter/nvidia/llama-nemotron-embed-vl-1b-v2:free"
     assert s.QDRANT_COLLECTION == "docchat_chunks"
     assert s.MAX_CONCURRENT_LLM_CALLS == 8

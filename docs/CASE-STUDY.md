@@ -60,13 +60,13 @@ carries that filter. Same isolation guarantee, no per-tenant infrastructure cost
 
 ## Result
 
-Measured on the v3 build, demo mode (free open-source models — the slowest path):
-**~5 seconds** from PDF upload to searchable, and **~5 seconds** median
-time-to-first-token, with the answer then streaming to completion. A user who brings a
-fast key (Groq's free tier or a paid provider) gets quicker still. The answer streams
-token-by-token with heartbeats through Railway's proxy, so even a slow answer never
-looks like a hang, and a daily job sweeps any upload that crashed mid-ingestion so
-failed uploads never quietly accumulate as orphaned storage.
+Measured on the v3 build, demo mode (chat on Groq's free Llama 3.3 70B, embeddings on a
+free NVIDIA model): **~5 seconds** from PDF upload to searchable, and **~5–6 seconds**
+to the first streamed word — most of which is the rewrite, retrieval, and reranking
+that happen before the answer even starts. The answer then streams token-by-token with
+heartbeats through Railway's proxy, so even a slow moment never looks like a hang, and
+a daily job sweeps any upload that crashed mid-ingestion so failed uploads never
+quietly accumulate as orphaned storage.
 
 The result is a small, fully-inspectable RAG system a client can point at their own
 documents, on their own key, and trust the citations on — built for close to zero

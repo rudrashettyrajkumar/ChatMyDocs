@@ -63,7 +63,9 @@ small open-source cross-encoder, then answered token-by-token with citations.
   `ChatGoogleGenerativeAI`) puts five providers behind one interface. The user's key
   lives only in their browser and travels per-request in a header — it is **never
   written to a database, a log, or Redis**. No key? Demo mode runs on free
-  open-source models on the server's own free-tier keys.
+  open-source models (Groq's Llama 3.3 70B for chat, an NVIDIA embedder on
+  OpenRouter) on the server's own free-tier keys, with the two providers failing
+  over to each other.
 - **RRF multi-query retrieval + open-source reranking** — the rewriter expands one
   question into 2–4 standalone queries (so a follow-up like "what about page 5?" still
   retrieves correctly); their results are fused with Reciprocal Rank Fusion, then a
@@ -91,19 +93,19 @@ small open-source cross-encoder, then answered token-by-token with citations.
 ## Measured, not made up
 
 Measured against the v3 build with `sample.pdf` (15 pages / 25 chunks), **demo mode**
-(free NVIDIA Nemotron models via OpenRouter — the slowest path; a fast key like Groq
-or GPT-4o-mini returns quicker):
+(chat on Groq's free Llama 3.3 70B; embeddings on OpenRouter's free NVIDIA embedder):
 
 | Metric | Measured value |
 |---|---|
 | Ingest (upload → searchable) | **~5s** |
-| Time-to-first-token (question → first streamed word) | **~5s median** |
+| Time-to-first-token (question → first streamed word) | **~5–6s** |
 
-The first token includes the full rewrite → retrieve → rerank pre-work; the answer
-then streams to completion in ~1–2s more. Free-tier providers occasionally spike
-(one run hit ~15s) — the honest tradeoff for zero-setup demo access, and exactly why
-BYOK exists. Re-run against production yourself: `./scripts/smoke.sh <backend-url>`
-prints the live upload/chat timeline.
+Time-to-first-token is dominated by the rewrite → retrieve → rerank pre-work that runs
+before the answer starts; the answer then streams to completion in ~1s more. Free-tier
+providers occasionally spike — the honest tradeoff for zero-setup demo access, and
+exactly why BYOK exists (your own Groq or paid key skips the shared free-tier queue).
+Re-run against production yourself: `./scripts/smoke.sh <backend-url>` prints the live
+upload/chat timeline.
 
 ## Local setup
 

@@ -30,8 +30,12 @@ _GROQ_BASE = "https://api.groq.com/openai/v1"
 # Providers whose endpoint honours OpenAI's `response_format` JSON mode.
 _OPENAI_COMPATIBLE = ("openrouter", "groq", "openai")
 
-# The pinned demo-mode fallback (diverse second provider — ARCHITECTURE §4).
+# Demo-mode diverse fallbacks (ARCHITECTURE §4): whichever provider is NOT the
+# env primary supplies the second deployment, so a rate-limit or outage on one
+# free tier fails over to the other. Both are open-source: Groq's Llama 3.3 70B
+# (fast on LPUs, reliable citer — verified 6/6) and OpenRouter's NVIDIA Nemotron.
 _GROQ_FALLBACK_MODEL = "llama-3.3-70b-versatile"
+_OPENROUTER_FALLBACK_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 
 def build_chat_model(
@@ -113,7 +117,8 @@ def parse_env_model(env_id: str) -> tuple[str, str]:
 
 
 def demo_chain(role: str) -> list[Selection]:
-    """Demo-mode failover chain for a role: env primary, then pinned Groq.
+    """Demo-mode failover chain for a role: env primary, then the OTHER free
+    provider as a diverse fallback (Groq<->OpenRouter, whichever isn't primary).
 
     Deployments whose provider key is missing are dropped (a half-configured
     dev box still boots and degrades at call time — config.py's philosophy).
@@ -126,8 +131,10 @@ def demo_chain(role: str) -> list[Selection]:
     chain: list[Selection] = []
     if keys.get(provider):
         chain.append(Selection(provider=provider, model=model, api_key=keys[provider]))
-    if s.GROQ_API_KEY and (provider, model) != ("groq", _GROQ_FALLBACK_MODEL):
-        chain.append(
-            Selection(provider="groq", model=_GROQ_FALLBACK_MODEL, api_key=s.GROQ_API_KEY)
-        )
+
+    # Diverse fallback: the provider the primary is NOT, with its pinned model.
+    fb_provider = "openrouter" if provider == "groq" else "groq"
+    fb_model = _OPENROUTER_FALLBACK_MODEL if fb_provider == "openrouter" else _GROQ_FALLBACK_MODEL
+    if keys.get(fb_provider) and (fb_provider, fb_model) != (provider, model):
+        chain.append(Selection(provider=fb_provider, model=fb_model, api_key=keys[fb_provider]))
     return chain

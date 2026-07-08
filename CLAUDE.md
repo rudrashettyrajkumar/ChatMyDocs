@@ -16,10 +16,13 @@ Goal: live demo + Loom video that wins freelance clients. Built in ~1 week.
 - ₹0 incremental cost: existing Railway Hobby, Qdrant free cluster, Upstash free,
   OpenRouter credit. Never add a paid service without flagging it. BYOK usage bills
   the USER's key, never ours.
-- **Demo mode serves ONLY free-tier open-source models** (NVIDIA Nemotron `:free`
-  via OpenRouter for chat + embeddings, open-source Llama on Groq as failover) —
-  never a paid or proprietary model. When it fails, the user-facing error says
-  it's the free tier and points at bringing their own key.
+- **Demo mode serves ONLY free-tier open-source models** — never a paid or
+  proprietary model. Chat (rewriter + answerer) runs on Groq's Llama 3.3 70B
+  (reliable citer, roomier free tier); embeddings run on OpenRouter's NVIDIA
+  `llama-nemotron-embed-vl-1b-v2:free` (Groq has no embedder, so OpenRouter's scarce
+  200/day is reserved for it); each chat role fails over to the other free provider
+  (`factory.demo_chain`). When it fails, the user-facing error says it's the free
+  tier and points at bringing their own key.
 - **LangChain + LangGraph ARE the LLM layer (v3, 2026-07-08, Raj-requested — this
   REVERSES the original "no frameworks" lock).** LiteLLM is gone. The graph lives in
   `backend/graph/chat_graph.py`; provider construction only in `backend/llm/factory.py`;
