@@ -48,7 +48,7 @@ def build_chat_model(
         from langchain_openai import ChatOpenAI
 
         base_url = {"openrouter": _OPENROUTER_BASE, "groq": _GROQ_BASE}.get(provider)
-        return ChatOpenAI(
+        chat = ChatOpenAI(
             model=model,
             api_key=key,
             base_url=base_url,
@@ -56,6 +56,17 @@ def build_chat_model(
             max_retries=0,
             streaming=streaming,
         )
+        if provider == "openrouter":
+            # Many OpenRouter free models (Nemotron, gpt-oss, Qwen3) are
+            # "reasoning" models by default: they burn a hidden, unbounded
+            # thinking budget BEFORE the first visible token — measured 70+s
+            # of silence on Nemotron 3 Super, blowing the role timeout and
+            # violating "the demo must feel instant" (ARCHITECTURE §1).
+            # `reasoning.enabled=false` is an OpenRouter-only unified control
+            # (400s on Groq/OpenAI — never bind it there); harmless on models
+            # that don't support extended thinking.
+            chat = chat.bind(reasoning={"enabled": False})
+        return chat
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
