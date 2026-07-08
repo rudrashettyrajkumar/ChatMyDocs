@@ -39,10 +39,13 @@ def create_app() -> FastAPI:
     app = FastAPI(title="DocChat", version="0.1.0", lifespan=_lifespan)
 
     # CORS: the SSE client lives on a different origin (Cloudflare Pages).
-    # Keep FRONTEND_ORIGIN a concrete origin — never "*" alongside credentials.
+    # FRONTEND_ORIGIN is comma-separated (prod Pages domain + localhost for
+    # dev testing against the live backend) — concrete origins only, never
+    # "*" alongside credentials.
+    origins = [origin.strip() for origin in settings.FRONTEND_ORIGIN.split(",") if origin.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.FRONTEND_ORIGIN],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
