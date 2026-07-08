@@ -92,7 +92,12 @@ def _no_deployments(cfg: RunConfig) -> LLMUnavailable:
 
 def _user_detail(selection: Selection, cfg: RunConfig, exc: Exception) -> str:
     if cfg.chat is None:
-        return "The AI service is temporarily unavailable. Please try again."
+        return (
+            "Demo mode runs on free-tier open-source models (NVIDIA Nemotron via "
+            "OpenRouter, Llama on Groq) and they're rate-limited or briefly down. "
+            "Try again in a minute — or add your own API key in the model picker "
+            "for reliable, unthrottled access."
+        )
     reason = str(exc)[:200]
     return (
         f"Your {selection.provider} model “{selection.model}” returned an error: "

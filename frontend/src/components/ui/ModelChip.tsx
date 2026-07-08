@@ -22,7 +22,7 @@ export function ModelChip({ onClick }: { onClick: () => void }) {
   const Icon = PROVIDER_ICON[config.provider] ?? Sparkles
   const label =
     config.mode === 'demo'
-      ? 'Demo mode'
+      ? 'Demo · free tier'
       : `${config.modelName || config.model}`
 
   return (

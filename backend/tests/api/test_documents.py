@@ -212,6 +212,24 @@ def test_upload_streams_progress_and_lands_in_list_then_delete(client, fake_redi
     assert client.get("/documents", headers=bearer(sid)).json() == []
 
 
+def test_demo_embedding_failure_gets_free_tier_error(client, fake_redis, fake_qdrant, fake_embed):
+    """No BYOK headers + embedding down → the SSE error names the free tier and
+    the bring-your-own-key fix, never the raw provider error."""
+    from backend.utils.embeddings import EmbeddingError
+
+    fake_embed.side_effect = EmbeddingError("429 too many requests")
+    pdf = _make_pdf(["Real extractable text content on this page. " * 5])
+
+    resp = _upload(client, pdf, session_id=_sid())
+    assert resp.status_code == 200
+    events = _parse_sse(resp.text)
+    error = events[-1]
+    assert error["stage"] == "error"
+    assert "free-tier" in error["detail"]
+    assert "own embedding key" in error["detail"]
+    assert "429" not in error["detail"]
+
+
 def test_sample_pdf_ingests_with_correct_page_payloads(client, fake_redis, fake_qdrant):
     """Acceptance criteria: uploading `sample/sample.pdf` lands N chunks with
     correct, monotonically sane page payloads (spot-checked here since Qdrant

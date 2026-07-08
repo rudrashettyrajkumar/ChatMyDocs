@@ -75,14 +75,14 @@ async def test_no_selection_uses_server_default(monkeypatch):
     with patch.object(embeddings.httpx, "AsyncClient", _client_capturing(calls, _ok_body(1))):
         await embed(["hello"])
     assert calls[0]["url"].startswith("https://openrouter.ai")
-    assert calls[0]["json"]["model"] == "google/gemini-embedding-001"
+    assert calls[0]["json"]["model"] == "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 
 
 def test_server_default_selection_parses_env_id():
     sel = server_default_selection()
     assert sel.provider == "openrouter"
-    assert sel.model == "google/gemini-embedding-001"
-    assert signature(sel) == "openrouter/google/gemini-embedding-001"
+    assert sel.model == "nvidia/llama-nemotron-embed-vl-1b-v2:free"
+    assert signature(sel) == "openrouter/nvidia/llama-nemotron-embed-vl-1b-v2:free"
 
 
 async def test_empty_texts_short_circuit():

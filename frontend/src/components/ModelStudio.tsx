@@ -359,8 +359,9 @@ export function ModelStudio({ open, onClose }: Props) {
                           Demo mode — no key needed
                         </span>
                         <span className="mt-0.5 block text-xs text-foreground-muted">
-                          Runs on DocChat's built-in models with a small daily quota. Bring a key to unlock
-                          your own limits and pick any model.
+                          Runs on free-tier open-source models (NVIDIA Nemotron via OpenRouter, Llama on
+                          Groq) with a small daily quota — it can hit rate limits under load. Bring your
+                          own key for reliable access and any model you like.
                         </span>
                       </span>
                       {draft.mode === 'demo' && <Check className="size-5 shrink-0 text-brand" aria-hidden />}

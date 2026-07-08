@@ -110,6 +110,13 @@ async def _persist_metadata(
         )
 
 
+_DEMO_INGEST_ERROR = (
+    "Demo mode embeds documents on a free-tier open-source model (NVIDIA Nemotron "
+    "via OpenRouter) and it's rate-limited or briefly down. Try again in a minute — "
+    "or add your own embedding key in the model picker for reliable uploads."
+)
+
+
 async def _stream_ingestion(
     pages: list[tuple[int, str]],
     *,
@@ -117,6 +124,7 @@ async def _stream_ingestion(
     filename: str,
     session_id: str,
     embed_selection: Selection,
+    byok: bool,
 ) -> AsyncIterator[str]:
     ready: dict | None = None
     ingestion = run_ingestion(
@@ -127,6 +135,10 @@ async def _stream_ingestion(
         embed_selection=embed_selection,
     )
     async for event in ingestion:
+        # Demo-mode embedding failures get the free-tier framing: the fix is
+        # "wait or bring your own key", not the raw provider error.
+        if not byok and event.get("stage") == "error" and "Embedding" in event.get("detail", ""):
+            event = {"stage": "error", "detail": _DEMO_INGEST_ERROR}
         yield format_event("progress", event)
         if event.get("stage") == "ready":
             ready = event
@@ -195,6 +207,7 @@ async def upload_document(
             filename=filename,
             session_id=session_id,
             embed_selection=embed_selection,
+            byok=cfg.embed is not None,
         ),
         media_type="text/event-stream",
     )

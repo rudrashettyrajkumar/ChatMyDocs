@@ -65,7 +65,7 @@ def test_embed_rejects_non_embedding_provider():
 def test_valid_embed_headers_parse_with_recommended_default_model():
     cfg = from_headers({"x-embed-provider": "openrouter", "x-embed-key": "sk-or-x"})
     assert cfg.embed.provider == "openrouter"
-    assert cfg.embed.model == "qwen/qwen3-embedding-0.6b"
+    assert cfg.embed.model == "nvidia/llama-nemotron-embed-vl-1b-v2:free"
 
 
 def test_key_with_whitespace_rejected():

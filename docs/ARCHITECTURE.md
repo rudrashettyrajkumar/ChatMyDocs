@@ -427,8 +427,14 @@ they live in localStorage and ride each request as headers —
 (embeddings) — parsed and validated once per request in `backend/llm/runconfig.py`
 (bad input → 400 `byok_invalid` BEFORE any stream commits).
 
-- **No headers → demo mode**: the original env-driven OpenRouter→Groq chain on the
-  server's keys, with the existing daily quotas (the ₹0 story is untouched).
+- **No headers → demo mode**: the env-driven OpenRouter→Groq chain on the server's
+  keys, with the existing daily quotas (the ₹0 story is untouched). **Demo mode
+  serves ONLY free-tier OPEN-SOURCE models** (verified working July 2026): NVIDIA
+  Nemotron `:free` via OpenRouter for chat (`nemotron-3-super-120b-a12b:free`
+  answerer, `nemotron-3-nano-30b-a3b:free` rewriter) and embeddings
+  (`llama-nemotron-embed-vl-1b-v2:free`, $0, Matryoshka 768-dim), with open-source
+  Llama 3.3 70B on Groq's free tier as failover — never a paid/proprietary model.
+  When the free tier saturates, error messages say so and point users at BYOK.
 - **BYOK gets no server fallback** — a broken user key fails with a fixable,
   provider-naming error event, never silently burns demo credit.
 
@@ -454,7 +460,8 @@ carries step-by-step "get a key" instructions rendered verbatim by the UI.
   missing/broken, the same node functions run sequentially — degrade, never break.
 
 ### 13.4 Embeddings: one 768-dim space per tenant, any provider
-All embedding providers (OpenRouter incl. open-source `qwen/qwen3-embedding-0.6b`,
+All embedding providers (OpenRouter incl. free open-source
+`nvidia/llama-nemotron-embed-vl-1b-v2:free` and `qwen/qwen3-embedding-0.6b`,
 OpenAI `text-embedding-3-*`, Gemini `gemini-embedding-001`) are requested at
 `dimensions=768` (Matryoshka truncation) so the single Qdrant collection keeps
 working; a hard dimension check rejects anything else. Because two different

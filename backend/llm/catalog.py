@@ -190,9 +190,23 @@ _OPENROUTER = ProviderInfo(
             cost="Free",
             context="1M",
             free=True,
+            notes="Open weights (NVIDIA Open License) — the model DocChat's demo "
+            "mode answers with.",
         ),
     ],
     embedding_models=[
+        ModelInfo(
+            id="nvidia/llama-nemotron-embed-vl-1b-v2:free",
+            name="Nemotron Embed 1B (free)",
+            accuracy=3,
+            speed="fast",
+            cost="Free",
+            context="131K",
+            free=True,
+            recommended=True,
+            notes="Open-source NVIDIA embedder — free on OpenRouter, Matryoshka "
+            "768-dim. Same model DocChat's demo mode uses.",
+        ),
         ModelInfo(
             id="qwen/qwen3-embedding-0.6b",
             name="Qwen3 Embedding 0.6B",
@@ -200,8 +214,7 @@ _OPENROUTER = ProviderInfo(
             speed="fast",
             cost="~$0.01/M tokens",
             context="32K",
-            recommended=True,
-            notes="Open-source embedder, pinned to 768 dimensions.",
+            notes="Open-source embedder, pinned to 768 dimensions. Needs credit.",
         ),
         ModelInfo(
             id="openai/text-embedding-3-small",
@@ -408,7 +421,7 @@ _GEMINI = ProviderInfo(
             cost="Free tier",
             context="8K",
             recommended=True,
-            notes="Same family DocChat's demo mode uses — pinned to 768 dimensions.",
+            notes="Google's embedder with a free-tier quota — pinned to 768 dimensions.",
         ),
     ],
 )

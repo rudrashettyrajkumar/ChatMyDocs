@@ -39,12 +39,15 @@ class Settings(BaseSettings):
     FRONTEND_ORIGIN: str = "http://localhost:5173"
 
     # --- Models (migrate by changing env alone; never touch agent code) --
-    # Gemini models served VIA OpenRouter (one gateway, one key); Groq is the
-    # failover (ARCHITECTURE §4). The key for each model is derived from its
-    # provider prefix in llm_router._key_for.
-    REWRITER_MODEL: str = "openrouter/google/gemini-3.1-flash-lite-preview"
-    ANSWERER_MODEL: str = "openrouter/google/gemini-3-flash-preview"
-    EMBED_MODEL: str = "openrouter/google/gemini-embedding-001"
+    # Demo mode runs EXCLUSIVELY on free-tier OPEN-SOURCE models so it never
+    # burns paid credit: NVIDIA Nemotron `:free` via OpenRouter (LLM + 768-dim
+    # Matryoshka embeddings), with open-source Llama on Groq as the failover
+    # (ARCHITECTURE §4). Model ids verified working July 2026 — `:free`
+    # lineups rotate, so re-verify at openrouter.ai/collections/free-models
+    # before changing these.
+    REWRITER_MODEL: str = "openrouter/nvidia/nemotron-3-nano-30b-a3b:free"
+    ANSWERER_MODEL: str = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    EMBED_MODEL: str = "openrouter/nvidia/llama-nemotron-embed-vl-1b-v2:free"
 
     # --- Provider credentials -------------------------------------------
     OPENROUTER_API_KEY: str | None = None  # primary gateway (all LLM + embeddings)

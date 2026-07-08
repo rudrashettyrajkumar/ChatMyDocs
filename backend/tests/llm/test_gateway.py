@@ -62,6 +62,21 @@ async def test_demo_mode_fails_over_to_second_deployment():
     assert text == "from fallback"
 
 
+async def test_demo_failure_detail_names_free_tier_and_byok_fix():
+    # Both demo deployments fail → the user learns it's the free tier and
+    # that bringing their own key is the fix (never a raw traceback).
+    with patch.object(
+        gateway.factory,
+        "build_chat_model",
+        side_effect=_factory_returning(_FakeModel(fail=True), _FakeModel(fail=True)),
+    ):
+        with pytest.raises(LLMUnavailable) as exc_info:
+            await complete("rewriter", _MSGS, DEFAULT)
+    detail = exc_info.value.user_detail
+    assert "free-tier" in detail
+    assert "own API key" in detail
+
+
 async def test_byok_failure_raises_with_fixable_detail_and_no_fallback():
     build_calls = []
 

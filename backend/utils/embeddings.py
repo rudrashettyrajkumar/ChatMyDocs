@@ -13,11 +13,12 @@ Gemini via its OpenAI-compatible endpoint — so one httpx code path covers
 them. No selection → the server's env default (demo mode, original
 behaviour).
 
-Every request pins `dimensions=768` (EMBED_DIM): OpenAI's text-embedding-3,
-Gemini's gemini-embedding-001, and Qwen3-Embedding all support Matryoshka
-truncation, which is what lets ONE 768-dim Qdrant collection serve every
-provider. A provider that ignores the parameter is caught by the hard
-dimension check below — a clear error beats silently poisoned vectors.
+Every request pins `dimensions=768` (EMBED_DIM): NVIDIA's llama-nemotron-embed
+(the free open-source demo default), OpenAI's text-embedding-3, Gemini's
+gemini-embedding-001, and Qwen3-Embedding all support Matryoshka truncation,
+which is what lets ONE 768-dim Qdrant collection serve every provider. A
+provider that ignores the parameter is caught by the hard dimension check
+below — a clear error beats silently poisoned vectors.
 
 Gotcha kept from v1: a 200 can still carry an `{"error": ...}` body on
 OpenRouter — a paid-credit wall (fail fast) or a transient hiccup.

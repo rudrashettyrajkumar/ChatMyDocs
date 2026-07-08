@@ -8,9 +8,10 @@ from backend.utils.config import REQUIRED_IN_PROD, Settings
 def test_defaults_when_env_present():
     s = Settings()
     assert s.ENV == "dev"
-    assert s.REWRITER_MODEL == "openrouter/google/gemini-3.1-flash-lite-preview"
-    assert s.ANSWERER_MODEL == "openrouter/google/gemini-3-flash-preview"
-    assert s.EMBED_MODEL == "openrouter/google/gemini-embedding-001"
+    # Demo mode is free-tier open-source only — never a paid model.
+    assert s.REWRITER_MODEL == "openrouter/nvidia/nemotron-3-nano-30b-a3b:free"
+    assert s.ANSWERER_MODEL == "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    assert s.EMBED_MODEL == "openrouter/nvidia/llama-nemotron-embed-vl-1b-v2:free"
     assert s.QDRANT_COLLECTION == "docchat_chunks"
     assert s.MAX_CONCURRENT_LLM_CALLS == 8
     assert s.MAX_DOC_MB == 10
