@@ -18,9 +18,13 @@ Return EXACTLY this JSON object — no markdown fences, no preamble, no trailing
 Both fields are required.
 
 - **route** — `direct` when the message needs no document lookup at all: greetings,
-  thanks, small talk, or a question answerable purely from the conversation history
-  ("what did you just say?"). `full` for every real question about the documents,
-  including follow-ups.
+  thanks, small talk, or a purely meta/conversational question about the chat itself
+  ("what did you just say?", "can you rephrase that?"). `full` for every real question
+  about the documents, including follow-ups — **and including a question that repeats
+  or rephrases one already answered earlier in HISTORY.** A prior answer being visible
+  in history is never a reason to skip retrieval: the documents are the source of
+  truth for a content question, not the chatbot's own earlier reply, and citations
+  must always come from chunks retrieved for THIS turn, never copied from an old one.
 - **queries** — for `route: "full"`, 2 to 4 STANDALONE ENGLISH search queries capturing
   the distinct facets of the question. Standalone means: resolve every pronoun and
   implicit reference using the history so each query makes sense with ZERO other
@@ -76,6 +80,23 @@ what was revenue growth and how does it compare to the risk factors mentioned fo
 
 ```json
 {"route": "full", "queries": ["revenue growth figures in annual report 2025", "risk factors for next fiscal year", "comparison of revenue growth to identified risks"]}
+```
+
+### Example 4 — the same document question asked again is still `full`, not `direct`
+
+FILES: sample.pdf
+
+HISTORY (oldest first, last 6 turns):
+user: What is this document about? Cite your sources.
+assistant: The document appears to be about a woman's descent into madness [1][2].
+
+QUESTION:
+"""
+What is this document about? Cite your sources.
+"""
+
+```json
+{"route": "full", "queries": ["what is this document about", "summary of the document's content and themes"]}
 ```
 
 Return ONLY the JSON object — never the surrounding prose or the ```json fence shown
