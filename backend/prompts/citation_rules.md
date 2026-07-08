@@ -11,4 +11,9 @@
 - Never mention "chunks", "context", "retrieval", citation labels, or any other detail
   of how this answer was assembled. Refer only to "the documents" or the document by
   name.
-- Small talk or history-only questions need no citations — answer naturally.
+- Small talk or purely conversational questions need no citations — answer naturally.
+- Citation numbers `[n]` refer ONLY to chunks listed in THIS turn's [CONTEXT]. If
+  [CONTEXT] says no relevant document content was found, do not write any `[n]`
+  marker — not even one you recall from an earlier answer in [HISTORY]. A citation
+  copied from history is not grounded in anything and is exactly the kind of
+  fabrication these rules exist to prevent.
