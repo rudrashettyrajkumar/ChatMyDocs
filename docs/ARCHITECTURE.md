@@ -411,3 +411,60 @@ Suggested week: Day 1 E1 · Day 2 E2 · Day 3 E3 · Day 4 E4 · Day 5–6 E5 · 
 5. Zero secrets in the repo; `.env.example` complete.
 6. README has: live demo link, 60-second architecture diagram, GIF of the citation UX,
    "how it's built" section, and honest limitations list.
+
+---
+
+## 13. v3 ADDENDUM — BYOK MULTI-PROVIDER + LANGCHAIN/LANGGRAPH (2026-07-08)
+
+Raj-requested overhaul; **supersedes §4's LiteLLM design and the v1 "no frameworks"
+lock**. Everything below is implemented on top of the v1.1 auth architecture.
+
+### 13.1 Bring-Your-Own-Key (BYOK)
+Users pick a provider + chat model + (optionally) embedding model in the frontend
+"Model Studio" and paste their own API key. **Keys never touch server storage**:
+they live in localStorage and ride each request as headers —
+`X-LLM-Provider/-Model/-Key` (chat) and `X-Embed-Provider/-Model/-Key`
+(embeddings) — parsed and validated once per request in `backend/llm/runconfig.py`
+(bad input → 400 `byok_invalid` BEFORE any stream commits).
+
+- **No headers → demo mode**: the original env-driven OpenRouter→Groq chain on the
+  server's keys, with the existing daily quotas (the ₹0 story is untouched).
+- **BYOK gets no server fallback** — a broken user key fails with a fixable,
+  provider-naming error event, never silently burns demo credit.
+
+### 13.2 Provider catalog (`backend/llm/catalog.py`, served at `GET /api/models`)
+Five providers: **Groq** (free tier, LPU-fast Llama/GPT-OSS/Qwen), **OpenRouter**
+(one key → 400+ models incl. rotating `:free` open-source tier; custom model ids
+allowed), **OpenAI** (GPT-5.x/4.1/4o-mini), **Anthropic** (Claude Fable 5 → Haiku
+4.5 — top accuracy tier), **Gemini** (3.5 Flash etc., free AI Studio keys). Each
+model carries a 1-5 accuracy tier, speed/cost/context labels, and each provider
+carries step-by-step "get a key" instructions rendered verbatim by the UI.
+`POST /api/models/validate` makes one live ping so the UI can prove a key works.
+
+### 13.3 LangChain + LangGraph layer (replaces LiteLLM everywhere)
+- `backend/llm/factory.py` — the ONLY module importing provider SDKs (lazily):
+  `ChatOpenAI` covers OpenRouter/Groq/OpenAI via `base_url`; `ChatAnthropic`,
+  `ChatGoogleGenerativeAI` cover the rest.
+- `backend/llm/gateway.py` — the single agent-facing chokepoint (`complete`/
+  `stream`), keeping v1's semaphore + role timeouts + failover-chain semantics.
+- `backend/graph/chat_graph.py` — the turn as a StateGraph:
+  `guardrail → context → rewrite → retrieve → rerank → END` with conditional
+  short-circuits (blocked / no-docs / route=direct). Token streaming stays in
+  `chat_pipeline.py` (SSE contract FROZEN from E4). If langgraph itself is
+  missing/broken, the same node functions run sequentially — degrade, never break.
+
+### 13.4 Embeddings: one 768-dim space per tenant, any provider
+All embedding providers (OpenRouter incl. open-source `qwen/qwen3-embedding-0.6b`,
+OpenAI `text-embedding-3-*`, Gemini `gemini-embedding-001`) are requested at
+`dimensions=768` (Matryoshka truncation) so the single Qdrant collection keeps
+working; a hard dimension check rejects anything else. Because two different
+models at 768 dims are still different SPACES, the first successful ingest **pins**
+`dc:embedsig:{tenant}` = `provider/model`; mismatched uploads → 409
+`embedding_mismatch`; queries always embed with the pinned model; deleting the
+last document releases the pin.
+
+### 13.5 Open-source reranker
+RRF now over-fetches `RETRIEVAL_POOL` (12) fused candidates; FlashRank
+(`ms-marco-TinyBERT`, ~4MB ONNX, CPU — the one deliberate exception to "no local
+models") re-scores them against the original question and keeps `RERANK_TOP_K`
+(6), renumbering citations. Missing/failed FlashRank degrades to plain RRF order.
